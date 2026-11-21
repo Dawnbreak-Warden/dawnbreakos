@@ -3,22 +3,8 @@
   gitUsername = "Dawnbreak-Warden";
   gitEmail = "houseinplayz@gmail.com";
 
-  # Set Displau Manager
-  # `tui` for Text login
-  # `sddm` for graphical GUI (default)
-  # SDDM background is set with stylixImage
-  displayManager = "sddm";
-
   # Emable/disable bundled applications
-  tmuxEnable = false;
-  alacrittyEnable = false;
-  weztermEnable = false;
-  ghosttyEnable = false;
   vscodeEnable = true;
-  # Note: This is evil-helix with VIM keybindings by default
-  helixEnable = false;
-  #To install: Enable here, ncli rebuild, then run ncli doom install
-  doomEmacsEnable = false;
   # Enable OBS Studio
   obsEnable = false;
 
@@ -30,7 +16,7 @@
   # You need to install it by adding it to the `packages.nix`
   # or as a flatpak
   #browser = "brave";
-  browser = "app.zen_browser.zen";
+  browser = "zen-beta";
   
 
   # Host-level default applications (picked up by Home Manager xdg.mimeApps)

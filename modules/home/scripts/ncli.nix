@@ -5,89 +5,6 @@
   ...
 }: let
   backupFilesString = pkgs.lib.strings.concatStringsSep " " backupFiles;
-
-  # Create the get-doom script as a dependency
-  get-doom-script = pkgs.writeShellScriptBin "get-doom" ''
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    # --- Icons ---
-    ICON_CHECK="✔"
-    ICON_INFO="ℹ"
-    ICON_ROCKET="🚀"
-
-    # --- Helper Functions ---
-    print_status() {
-      echo
-      echo "--- $ICON_INFO $1 ---"
-    }
-
-    print_success() {
-      echo "--- $ICON_CHECK $1 ---"
-    }
-
-    print_banner() {
-      echo "==============================="
-      echo " Doom Emacs Installer $ICON_ROCKET"
-      echo "==============================="
-    }
-
-    is_doom_installed() {
-      local dir="$1"
-      [[ -x "$dir/bin/doom" ]] && [[ -f "$dir/core/doom.el" || -f "$dir/lisp/doom.el" ]]
-    }
-
-    emacsdir_is_empty() {
-      local dir="$1"
-      [[ -d "$dir" ]] && [[ -z "$(ls -A "$dir" 2>/dev/null)" ]]
-    }
-
-    find_existing_doom_dir() {
-      local candidate
-      for candidate in "$HOME/.emacs.d" "$HOME/.config/emacs"; do
-        if is_doom_installed "$candidate"; then
-          echo "$candidate"
-          return 0
-        fi
-      done
-      return 1
-    }
-
-    # --- Main Script ---
-    print_banner
-    if existing_dir="$(find_existing_doom_dir)"; then
-      print_success "Doom Emacs is already installed at $existing_dir."
-      exit 0
-    fi
-
-    EMACSDIR="$HOME/.emacs.d"
-
-    if [[ -d "$EMACSDIR" ]]; then
-      if emacsdir_is_empty "$EMACSDIR"; then
-        print_status "Found empty $EMACSDIR; proceeding to install Doom Emacs into it..."
-      else
-        echo "Error: Found $EMACSDIR but it does not look like a Doom Emacs installation." >&2
-        echo "Refusing to overwrite a non-empty directory. Move it away and re-run, e.g.:" >&2
-        echo "  mv \"$EMACSDIR\" \"$EMACSDIR.bak\"" >&2
-        exit 1
-      fi
-    fi
-
-    print_status "Cloning Doom Emacs..."
-    ${pkgs.git}/bin/git clone --depth 1 https://github.com/doomemacs/doomemacs "$EMACSDIR"
-    print_success "Doom Emacs cloned."
-
-    print_status "Running Doom install..."
-    "$EMACSDIR/bin/doom" install
-    print_success "Doom install complete."
-
-    print_status "Running doom sync..."
-    "$EMACSDIR/bin/doom" sync
-    print_success "Doom sync complete."
-
-    echo
-    print_success "All done! Doom Emacs is ready to use."
-  '';
 in
   pkgs.writeShellScriptBin "ncli" ''
     #!${pkgs.bash}/bin/bash
@@ -129,7 +46,6 @@ in
     # update-host         - Modify flake.nix host/profile variables via sed
     # add-host            - Add new host configuration
     # del-host            - Delete host configuration
-    # doom [sub]          - Doom Emacs management (install/status/remove/update)
     #
     # Variables:
     # PROJECT             - Base directory name (dawnbreakos)
@@ -143,7 +59,7 @@ in
     PROJECT="dawnbreakos"
     PROFILE_DEFAULT="${profile}"
     BACKUP_FILES_STR="${backupFilesString}"
-    VERSION="1.0.2"
+    VERSION="1.5.0"
     FLAKE_NIX_PATH="$HOME/$PROJECT/flake.nix"
 
     read -r -a BACKUP_FILES <<< "$BACKUP_FILES_STR"
@@ -218,12 +134,6 @@ in
       echo "  --cores N       - Limit build to N cores (useful for VMs)"
       echo "  --verbose, -v   - Show verbose output"
       echo "  --no-nom        - Don't use nix-output-monitor"
-      echo ""
-      echo "Doom Emacs:"
-      echo "  doom install    - Install Doom Emacs using get-doom script."
-      echo "  doom status     - Check if Doom Emacs is installed."
-      echo "  doom remove     - Remove Doom Emacs installation."
-      echo "  doom update     - Update Doom Emacs (runs doom upgrade + sync)."
       echo ""
       echo "  help            - Show this help message."
     }
@@ -611,6 +521,7 @@ in
         ${pkgs.nix}/bin/nix profile history --profile /nix/var/nix/profiles/system || echo "Could not list system generations."
         ;;
       rebuild)
+        hm-find
         verify_hostname
         handle_backups
 
@@ -626,6 +537,7 @@ in
         fi
         ;;
       rebuild-boot)
+        hm-find
         verify_hostname
         handle_backups
 
@@ -655,6 +567,7 @@ in
         fi
         ;;
       update)
+        hm-find
         verify_hostname
         handle_backups
 
@@ -794,163 +707,6 @@ in
         else
           echo "Deletion cancelled."
         fi
-        ;;
-      doom)
-        if [ "$#" -lt 2 ]; then
-          echo "Error: doom command requires a subcommand." >&2
-          echo "Usage: ncli doom [install|status|remove|update]" >&2
-          exit 1
-        fi
-
-        # Ensure we're acting on a valid host and we can locate variables.nix
-        verify_hostname
-        current_hostname="$(hostname)"
-        host_vars_file="$HOME/$PROJECT/hosts/$current_hostname/variables.nix"
-
-        if [ ! -f "$host_vars_file" ]; then
-          echo "Error: Host variables file not found: $host_vars_file" >&2
-          echo "Please ensure your host folder exists and contains variables.nix." >&2
-          exit 1
-        fi
-
-        is_doom_enabled() {
-          # Return 0 if doomEmacsEnable = true; appears (ignoring leading spaces)
-          ${pkgs.gnugrep}/bin/grep -Eq '^[[:space:]]*doomEmacsEnable[[:space:]]*=[[:space:]]*true[[:space:]]*;' "$host_vars_file"
-        }
-
-        ensure_doom_enabled() {
-          # If the variable is present but false, flip it; if missing, append it
-          if ${pkgs.gnugrep}/bin/grep -Eq '^[[:space:]]*doomEmacsEnable[[:space:]]*=' "$host_vars_file"; then
-            ${pkgs.gnused}/bin/sed -i 's/^[[:space:]]*doomEmacsEnable[[:space:]]*=.*/  doomEmacsEnable = true;/' "$host_vars_file"
-          else
-            echo "" >> "$host_vars_file"
-            echo "  # Enabled by ncli doom on $(date)" >> "$host_vars_file"
-            echo "  doomEmacsEnable = true;" >> "$host_vars_file"
-          fi
-        }
-
-        find_doom_emacsdir() {
-          local candidate
-          local doom_path
-          local doom_real
-          local doom_root
-
-          for candidate in "$HOME/.emacs.d" "$HOME/.config/emacs"; do
-            if [ -x "$candidate/bin/doom" ] && { [ -f "$candidate/core/doom.el" ] || [ -f "$candidate/lisp/doom.el" ]; }; then
-              echo "$candidate"
-              return 0
-            fi
-          done
-
-          if doom_path="$(command -v doom 2>/dev/null)"; then
-            doom_real="$(${pkgs.coreutils}/bin/readlink -f "$doom_path" 2>/dev/null || true)"
-            if [ -z "$doom_real" ]; then
-              doom_real="$doom_path"
-            fi
-            doom_root="$(${pkgs.coreutils}/bin/dirname "$(${pkgs.coreutils}/bin/dirname "$doom_real")")"
-            if [ -x "$doom_root/bin/doom" ] && { [ -f "$doom_root/core/doom.el" ] || [ -f "$doom_root/lisp/doom.el" ]; }; then
-              echo "$doom_root"
-              return 0
-            fi
-          fi
-
-          return 1
-        }
-
-        doom_subcommand="$2"
-        case "$doom_subcommand" in
-          install)
-            if ! is_doom_enabled; then
-              echo "✗ Doom Emacs is disabled for host '$current_hostname' (doomEmacsEnable = false)." >&2
-              echo "To enable, set doomEmacsEnable = true; in:" >&2
-              echo "  $host_vars_file" >&2
-              echo "and rebuild your system before installing Doom." >&2
-              echo
-              read -p "Enable Doom for this host now and rebuild? (y/N) " -n 1 -r
-              echo
-              if [[ $REPLY =~ ^[Yy]$ ]]; then
-                echo "Enabling Doom Emacs in $host_vars_file..."
-                ensure_doom_enabled
-                echo "Rebuilding system so user modules are applied..."
-                if ${pkgs.nh}/bin/nh os switch --diff always --hostname "$PROFILE"; then
-                  echo "Rebuild complete. Proceeding with Doom installation."
-                else
-                  echo "Error: Rebuild failed. Please fix the build and re-run 'ncli doom install'." >&2
-                  exit 1
-                fi
-              else
-                echo "Aborting. Please enable doomEmacsEnable and rebuild before installing." >&2
-                exit 1
-              fi
-            fi
-            echo "Installing Doom Emacs..."
-            ${get-doom-script}/bin/get-doom
-            ;;
-          status)
-            if doom_emacsdir="$(find_doom_emacsdir)"; then
-              doom_bin="$doom_emacsdir/bin/doom"
-              echo "✔ Doom Emacs appears installed at $doom_emacsdir"
-              if [ -f "$HOME/.doom.d/init.el" ]; then
-                echo "  • User config found: $HOME/.doom.d/init.el"
-              else
-                echo "  • Warning: User config (~/.doom.d) not found"
-              fi
-              echo "Version information:"
-              "$doom_bin" version 2>/dev/null || echo "Could not get version information"
-            else
-              if [ -d "$HOME/.emacs.d" ]; then
-                if [ -z "$(ls -A "$HOME/.emacs.d" 2>/dev/null)" ]; then
-                  echo "✗ Found empty ~/.emacs.d (not a valid Doom installation)"
-                else
-                  echo "✗ ~/.emacs.d exists but Doom was not detected"
-                fi
-              elif [ -d "$HOME/.config/emacs" ]; then
-                if [ -z "$(ls -A "$HOME/.config/emacs" 2>/dev/null)" ]; then
-                  echo "✗ Found empty ~/.config/emacs (not a valid Doom installation)"
-                else
-                  echo "✗ ~/.config/emacs exists but Doom was not detected"
-                fi
-              else
-                echo "✗ Doom Emacs is not installed"
-              fi
-              echo "Run 'ncli doom install' to install it"
-            fi
-            ;;
-          remove)
-            if ! doom_emacsdir="$(find_doom_emacsdir)"; then
-              echo "Doom Emacs is not installed"
-              exit 0
-            fi
-
-            echo "Warning: This will completely remove Doom Emacs at $doom_emacsdir and all your configuration!"
-            read -p "Are you sure you want to continue? (y/N) " -n 1 -r
-            echo
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-              echo "Removing Doom Emacs..."
-              ${pkgs.coreutils}/bin/rm -rf "$doom_emacsdir"
-              echo "✔ Doom Emacs has been removed"
-            else
-              echo "Removal cancelled"
-            fi
-            ;;
-          update)
-            if ! doom_emacsdir="$(find_doom_emacsdir)"; then
-              echo "Error: Doom Emacs is not installed correctly. Run 'ncli doom install' first." >&2
-              exit 1
-            fi
-
-            doom_bin="$doom_emacsdir/bin/doom"
-            echo "Updating Doom Emacs at $doom_emacsdir..."
-            "$doom_bin" upgrade
-            "$doom_bin" sync
-            echo "✔ Doom Emacs update complete"
-            ;;
-          *)
-            echo "Error: Invalid doom subcommand '$doom_subcommand'" >&2
-            echo "Usage: ncli doom [install|status|remove|update]" >&2
-            exit 1
-            ;;
-        esac
         ;;
       fetch)
         # ============================================================

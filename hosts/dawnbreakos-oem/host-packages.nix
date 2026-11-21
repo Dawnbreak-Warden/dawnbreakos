@@ -11,9 +11,10 @@
     kdePackages.konsole
     obsidian
     zapzap
-    (discord.override {
-      withVencord = true;
-    })
+    discord
+#     (discord.override {
+#       withVencord = true;
+#     })
     libreoffice-qt
     hunspell
     gnome-system-monitor
@@ -47,13 +48,13 @@
   };
 
   # Add host specific flatpaks here
-#   services = {
-#     flatpak = {
-#       packages = [
-#         #"com.rtosta.zapzap"
-#       ];
-#     };
-#   };
+  services = {
+    flatpak = {
+      packages = [
+        "org.vinegarhq.Sober"
+      ];
+    };
+  };
 #   services.auto-cpufreq.enable = false;
 #   services.auto-cpufreq.settings = {
 #     battery = {

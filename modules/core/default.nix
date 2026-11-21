@@ -17,12 +17,7 @@ in {
     ./quickshell.nix
     ./packages.nix
     ./printing.nix
-    # Conditionally import the display manager module
-    (
-      if vars.displayManager == "tui"
-      then ./ly.nix
-      else ./sddm.nix
-    )
+    ./sddm.nix
     ./security.nix
     ./services.nix
     ./steam.nix

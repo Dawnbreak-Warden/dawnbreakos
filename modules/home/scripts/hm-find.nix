@@ -3,25 +3,6 @@ pkgs.writeShellScriptBin "hm-find" ''
   #!/usr/bin/env bash
 
   # Script Metadata
-  #===============================================
-  # This script searches recent journalctl entries for Home Manager errors
-  # It identifies backup files that prevent rebuilds and allows removal.
-  # Author: Don Williams
-  # Creation Date: May 6th, 2025
-  # Revision History:
-  #-----------------------------------------------
-  # 0.1 - 5/6/25 - Initial version
-  # 0.2 - 5/7/25 - Improved messaging, added log directory check
-
-  # Display WARNING message
-  echo "==============================================="
-  echo "            ⚠️ WARNING ⚠️            "
-  echo "==============================================="
-  echo "*** This script is experimental! ***"
-  echo "It will attempt to find old backup files that are preventing Home Manager from rebuilding."
-  echo "If conflicting files are found, you will be prompted to remove them."
-  echo "A log of any deletions will be stored in \$HOME/hm-logs."
-  echo "==============================================="
 
   # Define the time range (default: last 30 minutes)
   TIME_RANGE="30m"
