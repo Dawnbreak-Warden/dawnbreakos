@@ -1,147 +1,202 @@
-# DawnbreakOS Command Line Utility (ncli) - Version 1.0.2
+# NCLI — DawnbreakOS Command-Line Utility
 
-ncli is a handy tool for performing common maintenance tasks on your DawnbreakOS
-system with a single command. Below is a detailed guide to its usage and
-commands.
+NCLI is the command-line utility included with DawnbreakOS. It wraps common NixOS maintenance and host-management operations.
 
 ## Usage
 
-Run the utility with a specific command:
+```bash
+ncli <command> [options]
+```
 
-`ncli`
-
-If no command is provided, it displays this help message.
-
-## Available Commands
-
-Here’s a quick reference table for all commands, followed by detailed
-descriptions:
-
-|| Command       | Icon | Description                                                                                                                                           | Example Usage                           |
-|| ------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-|| cleanup       | 🧹   | Removes old system generations, either all or by specifying a number to keep, helping free up space.                                                  | `ncli cleanup` (prompted for all or #)  |
-|| diag          | 🛠️   | Generates a system diagnostic report and saves it to `diag.txt` in your home directory.                                                               | `ncli diag`                             |
-|| list-gens     | 📋   | Lists user and system generations, showing active and existing ones.                                                                                  | `ncli list-gens`                        |
-|| rebuild       | 🔨   | Rebuilds the NixOS system configuration by checking for files that might prevent Home Manager from rebuilding.                                        | `ncli rebuild [options]`                |
-|| rebuild-boot  | 🔄   | Rebuilds NixOS configuration for next boot (activates on restart) - safer for major changes.                                                         | `ncli rebuild-boot [options]`           |
-|| trim          | ✂️   | Trims filesystems to improve SSD performance and optimize storage.                                                                                    | `ncli trim`                             |
-|| update        | 🔄   | Updates the flake, checks for potential conflicts that might prevent Home Manager from rebuilding, and then rebuilds the system.                      | `ncli update [options]`                 |
-|| update-host   | 🏠   | Automatically sets the host and profile in your `flake.nix` file based on the current system. It detects the GPU type or prompts for input if needed. | `ncli update-host [hostname] [profile]` |
-|| add-host      | ➕   | Creates a new host configuration by copying the default template and setting up hardware detection.                                                   | `ncli add-host [hostname] [profile]`    |
-|| del-host      | ➖   | Removes an existing host configuration directory and files.                                                                                           | `ncli del-host [hostname]`              |
-|| doom install  | 🔥   | Installs Doom Emacs using the automated get-doom script with all required packages.                                                                  | `ncli doom install`                     |
-|| doom status   | ✅   | Checks if Doom Emacs is installed and shows version information.                                                                                     | `ncli doom status`                      |
-|| doom remove   | 🗑️   | Completely removes Doom Emacs installation (with safety confirmation).                                                                               | `ncli doom remove`                      |
-|| doom update   | 🔄   | Updates Doom Emacs packages and configuration via doom sync.                                                                                         | `ncli doom update`                      |
-
-## Advanced Build Options
-
-The `rebuild`, `rebuild-boot`, and `update` commands now support advanced options for enhanced control:
-
-| Option | Short | Description | Example |
-|--------|-------|-------------|----------|
-| `--dry` | `-n` | Preview mode - shows what would be done without executing | `ncli rebuild --dry` |
-| `--ask` | `-a` | Interactive confirmation prompts for safety | `ncli update --ask` |
-| `--cores N` | | Limit build operations to N CPU cores (useful for VMs) | `ncli rebuild --cores 4` |
-| `--verbose` | `-v` | Enable verbose output for detailed operation logs | `ncli update --verbose` |
-| `--no-nom` | | Disable nix-output-monitor for traditional output | `ncli rebuild --no-nom` |
-
-### Usage Examples
+To display the built-in help:
 
 ```bash
-# Preview what an update would do without actually doing it
-ncli update --dry
+ncli help
+```
 
-# Rebuild with confirmation prompts and verbose output
-ncli rebuild --ask --verbose
+## Command reference
 
-# Limit rebuild to 2 cores (great for VMs or low-power systems)
-ncli rebuild --cores 2
+| Command | Description | Example |
+| --- | --- | --- |
+| `cleanup` | Interactively clean old system generations. | `ncli cleanup` |
+| `diag` | Write a full `inxi` diagnostic report to `~/diag.txt`. | `ncli diag` |
+| `list-gens` | List user and system generations. | `ncli list-gens` |
+| `rebuild` | Build and activate the selected NixOS configuration. | `ncli rebuild` |
+| `rebuild-boot` | Build the selected configuration and set it as the boot default for the next restart. | `ncli rebuild-boot` |
+| `trim` | Ask for confirmation, then run `sudo fstrim -v /`. | `ncli trim` |
+| `update` | Update flake inputs and rebuild/activate the system. | `ncli update` |
+| `update-host` | Set the host and profile values in `flake.nix`, either explicitly or through hardware detection. | `ncli update-host my-host amd` |
+| `add-host` | Copy the default host template to a new host directory and configure its profile. | `ncli add-host my-host amd` |
+| `del-host` | Delete a host directory after confirmation. | `ncli del-host my-old-host` |
+| `fetch` | Display a DawnbreakOS and hardware summary. | `ncli fetch` |
+| `help` | Display the built-in help. | `ncli help` |
 
-# Combine multiple options
+## Build options
+
+The `rebuild`, `rebuild-boot`, and `update` commands accept these options:
+
+| Option | Alias | Description |
+| --- | --- | --- |
+| `--dry` | `-n` | Pass a dry-run request to `nh`. |
+| `--ask` | `-a` | Ask for confirmation through `nh`. |
+| `--cores N` | — | Limit the build to `N` CPU cores. |
+| `--verbose` | `-v` | Enable verbose output. |
+| `--no-nom` | — | Disable nix-output-monitor output. |
+
+Examples:
+
+```bash
+# Preview a rebuild
+ncli rebuild --dry
+
+# Ask before an update
+ncli update --ask
+
+# Limit a build to four cores
+ncli rebuild --cores 4
+
+# Combine options
 ncli update --dry --verbose --cores 4
 ```
 
-## Detailed Command Descriptions
+## System commands
 
-### System Management
+### `ncli cleanup`
 
-- **🧹 cleanup**: This command helps manage system storage by removing old
-  generations. You can remove all generations or specify a number to retain
-  (e.g., `ncli cleanup` free's up space and removes the entries from boot menu.
+Prompts for the number of generations to keep.
 
-- **🛠️ diag**: Creates a comprehensive diagnostic report by running
-  `inxi --full` and saving the output to `diag.txt` in your home directory. This
-  is ideal for troubleshooting or sharing system details when reporting issues.
+- Press Enter to request cleanup that removes all but the current generation.
+- Enter a number to keep that many recent generations.
+- The command asks for confirmation before running `nh clean all`.
 
-- **📋 list-gens**: Displays a clear list of your current user and system
-  generations, including active ones. This allows you to review what's installed
-  and plan cleanups.
+Cleanup logs are written to `~/ncli-cleanup-logs/`. Log files older than three days are deleted during the cleanup process.
 
-- **🔨 rebuild**: Performs a system rebuild for NixOS by first checking for any
-  files that could block Home Manager from completing the process. Now supports
-  advanced options for dry runs, confirmation prompts, and performance tuning.
+### `ncli diag`
 
-- **🔄 rebuild-boot**: Similar to rebuild but sets the configuration for next boot
-  instead of immediate activation. This is safer for major system changes, kernel
-  updates, or when you want to test changes after a reboot. Configuration becomes
-  active only after restarting.
+Runs:
 
-- **✂️ trim**: Optimizes your filesystems, particularly for SSDs, to improve
-  performance and reduce wear. Run this regularly as part of your maintenance
-  routine.
+```bash
+inxi --full
+```
 
-- **🔄 update**: Streamlines updates by checking for potential issues with Home
-  Manager, then updating the flake and rebuilding the system. This combines
-  flake updates and rebuilds into one efficient step. Supports all advanced build options.
+The output is saved to `~/diag.txt`.
 
-### Host Management
+### `ncli list-gens`
 
-- **🏠 update-host**: Simplifies managing multiple hosts by automatically
-  updating the `hostname` and `profile` in your `~/dawnbreakos/flake.nix` file. It
-  attempts to detect your GPU type; if it fails, you'll be prompted to enter the
-  details manually.
+Displays user generations with `nix-env --list-generations`, followed by system profile history from `/nix/var/nix/profiles/system`.
 
-- **➕ add-host**: Creates a new host configuration by copying the default template
-  and setting it up for your specific system. Automatically detects GPU profile
-  and can generate hardware.nix. Prompts for confirmation on GPU detection and
-  hardware generation.
+### `ncli rebuild`
 
-- **➖ del-host**: Safely removes an existing host configuration directory and all
-  associated files. Includes confirmation prompt to prevent accidental deletion.
+Runs the pre-build checks and then:
 
-### Doom Emacs Management
+```bash
+nh os switch --diff always --hostname <profile>
+```
 
-- **🔥 doom install**: Installs Doom Emacs using the automated get-doom script.
-  This includes cloning the Doom Emacs repository, running the installation, and
-  performing initial sync. All required packages are handled automatically.
+The command activates the new configuration if the build succeeds.
 
-- **✅ doom status**: Checks if Doom Emacs is properly installed and displays
-  version information. Useful for verifying installation or troubleshooting.
+### `ncli rebuild-boot`
 
-- **🗑️ doom remove**: Completely removes Doom Emacs installation including all
-  configuration files. Includes safety confirmation to prevent accidental removal.
+Runs the pre-build checks and then:
 
-- **🔄 doom update**: Updates Doom Emacs packages and configuration by running
-  `doom sync`. This ensures all packages are up-to-date and configurations are
-  properly applied.
+```bash
+nh os boot --diff always --hostname <profile>
+```
 
-## Additional Notes
+The new configuration is set as the boot default and becomes active after restarting.
 
-- **Why use ncli?** This utility saves time on routine tasks, reducing the need
-  for multiple commands or manual edits. The advanced options provide fine-grained
-  control over system operations.
+### `ncli update`
 
-- **Version and Compatibility:** Ensure you're using the latest version (1.0.2
-  as per the source). For any issues, generate a diagnostic report with
-  `ncli diag` and consult your system logs.
+Runs the pre-build checks and then:
 
-- **Safety Features:** The new `--dry` option allows you to preview changes before
-  applying them, while `--ask` provides interactive confirmation for critical operations.
+```bash
+nh os switch --diff always --hostname <profile> --update
+```
 
-- **Performance Tuning:** Use `--cores` to limit CPU usage during builds, especially
-  useful in virtual machines or systems with limited resources.
+This updates the flake inputs and rebuilds/activates the system.
 
-- **Doom Emacs Integration:** The built-in Doom Emacs management eliminates the need
-  for manual installation and configuration, providing a streamlined experience for
-  this popular Emacs distribution.
+### `ncli trim`
+
+Asks for confirmation before running:
+
+```bash
+sudo fstrim -v /
+```
+
+### `ncli fetch`
+
+Displays a custom DawnbreakOS summary. The displayed information includes:
+
+- Configured host, profile, and username.
+- Kernel and Hyprland versions.
+- Host model, CPU, and GPU.
+- Memory use, root filesystem use, and uptime.
+- Git working-tree status, branch, and short commit hash.
+- Current system generation.
+
+## Host management
+
+### `ncli update-host`
+
+There are two supported forms:
+
+```bash
+# Detect the current hostname and GPU profile
+ncli update-host
+
+# Set both values explicitly
+ncli update-host <hostname> <profile>
+```
+
+The command edits the `host` and `profile` assignments in `~/dawnbreakos/flake.nix`. Automatic detection uses the current system hostname and `lspci`/virtualization information.
+
+### `ncli add-host`
+
+```bash
+ncli add-host [hostname] [profile]
+```
+
+The command copies `hosts/default` to `hosts/<hostname>`. If the hostname is omitted, it prompts for one. It then attempts to detect the GPU profile, asks for confirmation, and can generate `hardware.nix` using `nixos-generate-config`. Finally, it stages the repository changes with `git add .`.
+
+Choose a profile that is exported by `flake.nix`.
+
+### `ncli del-host`
+
+```bash
+ncli del-host [hostname]
+```
+
+If the hostname is omitted, the command prompts for it. It asks for confirmation before deleting `hosts/<hostname>` and then stages the repository changes with `git add .`.
+
+## Automatic pre-build cleanup
+
+> **Read this section before running `rebuild`, `rebuild-boot`, or `update`.**
+
+All three commands run `hm-find` before building. In the current repository, `modules/home/scripts/hm-find.nix`:
+
+1. Searches the system journal for Home Manager backup conflicts from the last 30 minutes.
+2. Extracts the paths reported as conflicting.
+3. Deletes the matching paths automatically.
+4. Writes a log under `~/hm-logs/`.
+
+No confirmation is requested before these matching paths are deleted.
+
+After `hm-find`, NCLI runs its configured backup-file cleanup. The current NCLI configuration includes:
+
+```text
+.config/mimeapps.list.backup
+```
+
+If `~/.config/mimeapps.list.backup` exists, NCLI removes it.
+
+Review the affected paths and preserve anything you need before running a build command, since these files are deleted automatically.
+
+## Hostname validation
+
+Before `rebuild`, `rebuild-boot`, and `update`, NCLI checks that:
+
+- The `host` value in `~/dawnbreakos/flake.nix` is present.
+- The current system hostname matches that value.
+- `~/dawnbreakos/hosts/<hostname>/` exists.
+
+If one of these checks fails, the command exits before building. Use `ncli update-host` or edit `flake.nix` manually, then verify the host directory.

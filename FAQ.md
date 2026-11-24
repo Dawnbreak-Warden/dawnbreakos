@@ -1,1180 +1,672 @@
-# 💬 DawnbreakOS FAQ
+# DawnbreakOS FAQ
 
-**⌨ Where can I see the Hyprland keybindings?**
+This FAQ describes the configuration in the current repository. Paths are relative to `~/dawnbreakos` unless stated otherwise. Commands and file paths below refer to the current DawnbreakOS layout.
 
-- The SUPER key + / opens a menu with the bindings
+## Hosts and hardware
 
-<details>
-<summary>**✨🖥️  NCLI:  What is it and how do I use it?**</summary>
-<div style="margin-left: 20px;">
+### What is the difference between a host and a profile?
 
-The `ncli` utility is a command-line tool designed to simplify the management of
-your `dawnbreakos` environment. It provides a comprehensive set of commands to
-perform common tasks such as updating your system, managing hosts, cleaning up
-old generations, and managing Doom Emacs.
+- A **host** identifies the machine-specific configuration directory under `hosts/`.
+- A **profile** selects the hardware configuration exported by `flake.nix`.
 
-To use it, open a terminal and type `ncli` followed by one of the commands
-listed below:
+The `host`, `profile`, and `username` values are defined near the top of `flake.nix`. The current flake exports these profile names:
 
-## Core System Commands:
+- `amd`
+- `intel`
+- `nvidia`
+- `nvidia-laptop`
+- `amd-nvidia-hybrid`
+- `vm`
 
-- `cleanup`: Clean up old system generations. You can specify the number of
-  generations to keep. Includes automated log cleanup for old build logs.
-- `diag`: Create a comprehensive system diagnostic report using `inxi --full`,
-  saved to `~/diag.txt`. Perfect for troubleshooting.
-- `list-gens`: List both user and system generations with detailed information.
-- `rebuild`: Rebuild the NixOS system configuration with enhanced safety checks
-  and backup file handling.
-- `rebuild-boot`: Rebuild and set as boot default (activates on next restart).
-  Safer for major system changes and kernel updates.
-- `trim`: Trim filesystems to improve SSD performance with user confirmation
-  prompts.
-- `update`: Update the flake and rebuild the system with comprehensive error
-  handling.
+Use the exact spelling from `nixosConfigurations`. The host name must match a directory under `hosts/`.
 
-## Host Management:
+### How do I add another host?
 
-- `update-host`: Automatically set the host and profile in `flake.nix`. Features
-  intelligent GPU detection and hostname validation.
-- `add-host`: Create new host configurations with automated GPU detection,
-  hardware.nix generation, and git integration.
-- `del-host`: Safely delete host configurations with confirmation prompts to
-  prevent accidental removal.
+1. Copy the default host template:
 
-**Usage:** `ncli add-host [hostname] [profile]`\
-**GPU Profiles:** `amd`, `intel`, `nvidia`, `nvidia-hybrid`, and `vm`
+   ```bash
+   cp -r hosts/default hosts/<HOSTNAME>
+   ```
 
-## Advanced Build Options:
+2. Generate the hardware configuration for the target machine:
 
-The `rebuild`, `rebuild-boot`, and `update` commands support enhanced options
-for fine-grained control:
+   ```bash
+   sudo nixos-generate-config --show-hardware-config > hosts/<HOSTNAME>/hardware.nix
+   ```
 
-- `--dry, -n`: Preview mode - shows what would be done without executing (dry
-  run)
-- `--ask, -a`: Interactive confirmation prompts for safety-critical operations
-- `--cores N`: Limit build operations to N CPU cores (essential for VMs and
-  resource-constrained systems)
-- `--verbose, -v`: Enable detailed operation logs and verbose output for
-  troubleshooting
-- `--no-nom`: Disable nix-output-monitor for traditional command-line output
+3. Edit `flake.nix` and set `host` to `<HOSTNAME>`. Select a valid `profile` from the list above and set `username` to the account name used on the machine.
+4. Review `hosts/<HOSTNAME>/variables.nix`, especially the GPU PCI IDs, keyboard settings, and `stylixImage`.
+5. Add the new files to Git before building:
 
-**Multiple options can be combined** for precise control over your build
-process.
+   ```bash
+   git add flake.nix hosts/<HOSTNAME>
+   ```
 
-## Doom Emacs Management:
+6. Rebuild the selected configuration:
 
-Complete Doom Emacs lifecycle management with safety features:
+   ```bash
+   ncli rebuild
+   ```
 
-- `doom install`: Automated Doom Emacs installation using the get-doom script
-  with all required packages
-- `doom status`: Check installation status and display version information for
-  verification
-- `doom remove`: Safely remove Doom Emacs installation with confirmation prompts
-  to prevent accidental deletion
-- `doom update`: Update Doom Emacs packages and configuration via `doom sync`
+A Git-based flake does not include untracked files, so the new host directory must be added to Git before building.
 
-**Features:** Built-in safety checks, comprehensive error handling, and
-automatic dependency management.
+### How do I configure hybrid graphics?
 
-```text
-❯ ncli
-Error: No command provided.
-DawnbreakOS CLI Utility -- version 1.0.2
+Hybrid graphics requires the correct PCI bus IDs in `hosts/<HOSTNAME>/variables.nix` and the matching profile in `flake.nix`.
 
-Usage: ncli [command] [options]
+1. Find the graphics devices and their PCI addresses:
 
-Commands:
-  cleanup         - Clean up old system generations. Can specify a number to keep.
-  diag            - Create a system diagnostic report.
-                    (Filename: homedir/diag.txt)
-  list-gens       - List user and system generations.
-  rebuild         - Rebuild the NixOS system configuration.
-  rebuild-boot    - Rebuild and set as boot default (activates on next restart).
-  trim            - Trim filesystems to improve SSD performance.
-  update          - Update the flake and rebuild the system.
-  update-host     - Auto set host and profile in flake.nix.
-                    (Opt: ncli update-host [hostname] [profile])
+   ```bash
+   lspci -Dnn | grep -E 'VGA|3D|Display'
+   ```
 
-Options for rebuild, rebuild-boot, and update commands:
-  --dry, -n       - Show what would be done without doing it
-  --ask, -a       - Ask for confirmation before proceeding
-  --cores N       - Limit build to N cores (useful for VMs)
-  --verbose, -v   - Show verbose output
-  --no-nom        - Don't use nix-output-monitor
+   Identify the integrated GPU (Intel or AMD) and the NVIDIA GPU. The `pciutils` package, which provides `lspci`, is included in the system packages.
 
-Doom Emacs:
-  doom install    - Install Doom Emacs using get-doom script.
-  doom status     - Check if Doom Emacs is installed.
-  doom remove     - Remove Doom Emacs installation.
-  doom update     - Update Doom Emacs (runs doom sync).
+2. Convert each PCI address to the format used by NixOS. For example, `lspci` may show `0000:00:02.0`. The NixOS ID format is `PCI:device@domain:bus:function`, with the hexadecimal PCI fields converted to decimal. That example becomes `PCI:0@0:2:0`.
 
-  help            - Show this help message.
+3. Edit the relevant values in `hosts/<HOSTNAME>/variables.nix`:
+
+   ```nix
+   intelID = "PCI:0@0:2:0";
+   amdgpuID = "PCI:5:0:0";
+   nvidiaID = "PCI:2@0:0:0";
+   ```
+
+   These are template examples, not values to copy blindly. Set the IDs to the addresses reported by your own machine. You only need the integrated-GPU variable used by your chosen profile, plus `nvidiaID`.
+
+4. Choose the matching profile in `flake.nix`:
+   - Intel + NVIDIA: `profile = "nvidia-laptop";`
+   - AMD + NVIDIA: `profile = "amd-nvidia-hybrid";`
+
+5. Add changed or new files to Git and rebuild:
+
+   ```bash
+   git add flake.nix hosts/<HOSTNAME>
+   ncli rebuild
+   ```
+
+The Intel/NVIDIA profile reads `intelID` and `nvidiaID`. The AMD/NVIDIA profile reads `amdgpuID` and `nvidiaID`. The GPU bus IDs are configured by the selected profile; do not add the old `AQ_DRM_DEVICES` instruction from earlier versions of the FAQ, because that setting is not present in the current Hyprland environment module.
+
+### How do I change the hostname?
+
+The host name used by DawnbreakOS must match the host directory and the system hostname.
+
+1. Copy the existing host directory to the new name:
+
+   ```bash
+   cp -rpv hosts/OLD-HOSTNAME hosts/NEW-HOSTNAME
+   ```
+
+2. Edit `flake.nix` and change the `host` value:
+
+   ```nix
+   host = "NEW-HOSTNAME";
+   ```
+
+3. Add the new directory and flake change to Git:
+
+   ```bash
+   git add flake.nix hosts/NEW-HOSTNAME
+   ```
+
+4. Rebuild:
+
+   ```bash
+   ncli rebuild
+   ```
+
+5. Reboot so the new system hostname takes effect.
+
+NCLI checks that the running system hostname matches the `host` value in `flake.nix` and that the corresponding `hosts/<HOSTNAME>/` directory exists. A mismatch stops `ncli rebuild`, `ncli rebuild-boot`, and `ncli update`.
+
+### How do I choose a different GPU profile?
+
+Edit the `profile` value near the top of `flake.nix` and use one of the exact names listed under `nixosConfigurations`. Make sure the host's `variables.nix` contains the PCI IDs required by that profile. Add the changed file to Git and run `ncli rebuild`.
+
+## Host settings and applications
+
+### Where do I change the keyboard layout?
+
+Edit these values in `hosts/<HOSTNAME>/variables.nix`:
+
+```nix
+keyboardLayout = "us";
+keyboardVariant = "";
+consoleKeyMap = "us";
 ```
 
-**Examples:**
+Set `keyboardLayout` and `keyboardVariant` for the graphical keyboard layout, and `consoleKeyMap` for the Linux console. Save the file and run `ncli rebuild`.
+
+### Where do I change the timezone?
+
+The timezone is currently set in `modules/core/system.nix`:
+
+```nix
+time.timeZone = "Asia/Beirut";
+```
+
+Change the value to a valid time-zone name, save the file, and run `ncli rebuild`.
+
+### How do I change the default applications for file types?
+
+1. Edit `mimeDefaultApps` in `hosts/<HOSTNAME>/variables.nix`.
+2. Set each MIME type or URL scheme to the `.desktop` application ID you want to use. For example:
+
+   ```nix
+   mimeDefaultApps = {
+     "application/pdf" = [ "org.kde.okular.desktop" ];
+     "x-scheme-handler/http" = [ "zen-beta.desktop" ];
+     "x-scheme-handler/https" = [ "zen-beta.desktop" ];
+     "inode/directory" = [ "nemo.desktop" ];
+     "text/plain" = [ "org.kde.kate.desktop" ];
+   };
+   ```
+
+3. Confirm the application ID matches an installed desktop file, then run `ncli rebuild`.
+
+Home Manager applies the values through `modules/home/xdg.nix`. Changing a default does not install the application; install it separately through the system package or Flatpak configuration.
+
+### How do I add or remove system packages?
+
+There are two package lists:
+
+- **All hosts:** edit `modules/core/packages.nix`, in `environment.systemPackages`.
+- **One host:** edit `hosts/<HOSTNAME>/host-packages.nix`, in that file's `environment.systemPackages` list.
+
+Add the Nixpkgs package attribute to the relevant list, or remove its entry to stop declaring it. Then run:
 
 ```bash
-# System management
-ncli rebuild --dry                # Show what would be rebuilt
-ncli update --cores 4             # Update with 4 CPU cores max
-ncli rebuild-boot --ask           # Rebuild for boot with confirmation
-
-# Host management
-ncli add-host myhost amd          # Add new host with AMD GPU
-ncli update-host                  # Auto-detect and update host info
-
-# Doom Emacs
-ncli doom install                 # Install Doom Emacs
-ncli doom status                  # Check installation status
+ncli rebuild
 ```
 
-</div>
-</details>
+### How do I add or remove Flatpaks?
 
-## Questions, settings, updating, misc...
+The shared Flatpak list is in `modules/core/flatpak.nix`, under `services.flatpak.packages`.
 
-<details>
-
-<div style="margin-left: 20px;">
-
-<details>
-<summary>**How do I set default apps (PDF, browser) per host?**</summary>
-
-- Edit `~/dawnbreakos/hosts/<HOSTNAME>/variables.nix` and uncomment `mimeDefaultApps`.
-- Home Manager will consume these via `modules/home/xdg.nix` to write your `~/.config/mimeapps.list`.
-- Use real `.desktop` IDs from `/usr/share/applications` or `~/.local/share/applications`.
+To add a Flatpak for every host, add its official application ID to that list. To add one only for a particular host, edit `hosts/<HOSTNAME>/host-packages.nix` and uncomment or extend the optional Flatpak block already provided in the host template. For example:
 
 ```nix
-# hosts/<HOSTNAME>/variables.nix
-# Host-level default applications (picked up by Home Manager xdg.mimeApps)
-# mimeDefaultApps = {
-#   # PDFs
-#   "application/pdf" = ["okular.desktop"];
-#   "application/x-pdf" = ["okular.desktop"];
-#   # Web browser
-#   "x-scheme-handler/http"  = ["google-chrome.desktop"];  # or brave-browser.desktop, firefox.desktop
-#   "x-scheme-handler/https" = ["google-chrome.desktop"];
-#   "text/html"              = ["google-chrome.desktop"];
-#   # Files
-#   "inode/directory" = ["thunar.desktop"];      # file manager
-#   "text/plain"      = ["nvim.desktop"];        # or code.desktop
-# };
-```
-
-</details>
-
-<details>
-<summary>**How to I add flatpaks? ?**</summary>
-
-- Edit `~/dawnbreakos/modules/core/flatpak.nix`
-- There is a list of sample apps you can use as a template
-
-```nix
- services = {
-    flatpak = {
-      enable = true;
-
-      # List the Flatpak applications you want to install
-      # Use the official Flatpak application ID (e.g., from flathub.org)
-      # Examples:
-      packages = [
-        #"com.github.tchx84.Flatseal" #Manage flatpak permissions - should always have this
-        #"com.rtosta.zapzap"              # WhatsApp client
-        #"io.github.flattool.Warehouse"   # Manage flatpaks, clean data, remove flatpaks and deps
-        #"it.mijorus.gearlever"           # Manage and support AppImages
-        #"io.github.freedoom.Phase1"      #  Classic Doom FPS 1
-        #"io.github.freedoom.Phase2"      #  Classic Doom FPS 2
-        #"io.github.dvlv.boxbuddyrs"      #  Manage distroboxes
-
-        # Add other Flatpak IDs here, e.g., "org.mozilla.firefox"
-      ];
-
-      # Optional: Automatically update Flatpaks when you run nixos-rebuild swit ch
-      update.onActivation = true;
-    };
-  };
-```
-
-- Make sure you use the correct package name
-- Go to `flathub.org`to verify or use `flatpak search PACKAGENAME`
-- Save the file and to a rebuild with the `fr`alias
-- After you can run `flatpak list` to verify the install
-- When you run `fu` or `fr` the flatpaks will get updated as well
-
-</details>
-
-<details>
-<summary>**How to I remove flatpaks? ?**</summary>
-
-- Edit `~/dawnbreakos/modules/core/flatpak.nix`
-
-```nix
- services = {
-    flatpak = {
-      enable = true;
-
-      # List the Flatpak applications you want to install
-      # Use the official Flatpak application ID (e.g., from flathub.org)
-      # Examples:
-      packages = [
-        #"com.github.tchx84.Flatseal" #Manage flatpak permissions - should always have this
-        #"com.rtosta.zapzap"              # WhatsApp client
-        #"io.github.flattool.Warehouse"   # Manage flatpaks, clean data, remove flatpaks and deps
-        #"it.mijorus.gearlever"           # Manage and support AppImages
-        #"io.github.freedoom.Phase1"      #  Classic Doom FPS 1
-        #"io.github.freedoom.Phase2"      #  Classic Doom FPS 2
-        #"io.github.dvlv.boxbuddyrs"      #  Manage distroboxes
-
-        # Add other Flatpak IDs here, e.g., "org.mozilla.firefox"
-      ];
-
-      # Optional: Automatically update Flatpaks when you run nixos-rebuild swit ch
-      update.onActivation = true;
-    };
-  };
-```
-
-- Either remove the line with the package you want to remove or comment it out
-- Save the file and to a rebuild with the `fr`alias
-- After you can run `flatpak list` to verify the package(s) are removed
-- Note the base dependencies for flatpaks remain once installed.
-
-</details>
-
-<details>
-<summary>** How do I change the Timezone? **</summary>
-
-1. In the file, `~/dawnbreakos/modules/core/system.nix`
-2. Edit the line: time.timeZone = "America/New_York";
-3. Save the file and rebuild using the `fr` alias.
-
-</details>
-
-
-<details>
-<summary>**How do I add applications to DawnbreakOS? **</summary>
-
-### There are two options. One for all hosts you have, another for a specific host.
-
-1. For applications to be included in all defined hosts edit the
-   `~/dawnbreakos/modules/core/packages.nix` file.
-
-There is a section that begins with: `environment.systemPackages = with pkgs;`
-
-Followed by a list of packages These are required for DawnbreakOS.
-
-We suggest you add a comment at the end of the package names. Then add in your
-packages.
-
-```text
-    ...
-    virt-viewer
-    wget
-    ###  My Apps ###
-    bottom
-    dua
-    emacs-nox
-    fd
-    gping
-    lazygit
-    lunarvim
-    luarocks
-    mission-center
-    ncdu
-    nvtopPackages.full
-    oh-my-posh
-    pyprland
-    shellcheck
-    multimarkdown
-    nodejs_23
-    ugrep
-    zoxide
-  ];
-}
-```
-
-2. For applications that will only be on specific host.
-
-You edit the `host-packages.nix` associated with that host.
-`~/dawnbreakos/hosts/<HOSTNAME>/host-packages.nix`
-
-The part of the file you need to edit, looks like this:
-
-```nix
-{ pkgs, ... }: {
-  environment.systemPackages = with pkgs; [
-    audacity
-    discord
-    nodejs
-    obs-studio
-  ];
-}
-```
-
-You can add additional packages, or for example change `discord` to
-`discord-canary` to get the beta version of Discord but only on this host.
-
-</details>
-
-<details>
-
-<summary>** I added the package names, now how do I install them ? **</summary>
-
-- Use the `ncli` utility. `ncli rebuild`
-- The legacy `fr`, Flake Rebuild alias, is depreciated but still available
-
-If the rebuild completes successfully, a new generation with your added packages
-will be created.
-
-</details>
-
-<details>
-<summary>** How do I update the packages I've already installed? **</summary>
-
-- Use the `ncli` utility. `ncli update`
-- The `fu`, Flake Update alias, is depreciated but still available
-- Either of these will check for updated packages, download and install them.
-
-</details>
-
-<details>
-<summary>** I made a change to my DawnbreakOS configuration, how do I activate it? **</summary>
-
-- Use the `ncli` utility. `ncli rebuild`
-- The legacy `fr`, Flake Rebuild alias, is depreciated but still available **
-  NOTE: If you **created a new file\*\*
-- you will need to run a `git add .` command in the `dawnbreakos` folder
-- If successful a new generation will be generated with your changes
-- A logout or reboot could be required depending on what you changed
-
-</details>
-
-<details>
-<summary>** How can I configure a different kernel on a specific host? **</summary>
-
-1. You have to edit the `hardware.nix` file for that host in
-   `~/dawnbreakos/hosts/HOSTNAME/hardware.nix` and override the default.
-2. Near the top you will find this section of the `hardware.nix` file.
-
-```nix
-boot.initrd.availableKernelModules = ["xhci_pci" "ahci" "nvme" "usbhid" "usb_storage" "sd_mod" "rtsx_usb_sdmmc"];
-boot.initrd.kernelModules = [];
-boot.kernelModules = ["kvm-intel"];
-boot.extraModulePackages = [];
-```
-
-3. Add the override. E.g. to set the kernel to 6.12.
-
-- `boot.kernelPackages = lib.mkForce pkgs.linuxPackages_6_12;`
-
-4. The updated code should look like this:
-
-```nix
-boot.initrd.availableKernelModules = ["xhci_pci" "ahci" "nvme" "usbhid" "usb_storage" "sd_mod" "rtsx_usb_sdmmc"];
-boot.kernelPackages = lib.mkForce pkgs.linuxPackages_6_12;
-boot.initrd.kernelModules = [];
-boot.kernelModules = ["kvm-intel"];
-boot.extraModulePackages = [];
-```
-
-5. Use the command `ncli rebuild` or alias `fr` to create a new generation and
-   reboot to take effect.
-
-</details>
-
-<details>
-
-<summary>** What are the major Kernel options in NixOS? **</summary>
-NixOS offers several major kernel types to cater to different needs and preferences. Below are the available options, excluding specific kernel versions:
-
-1. **`linuxPackages`**
-   - The default stable kernel, typically an LTS (Long-Term Support) version.
-     LTS in 25.05 (warbler) is 6.12.x Older kernels, 6.6.x, 6.8.x are not
-     supported.
-
-2. **`linuxPackages_latest`**
-   - The latest mainline kernel, which may include newer features but could be
-     less stable.
-
-3. **`linuxPackages_zen`**
-   - A performance-optimized kernel with patches aimed at improving
-     responsiveness and interactivity. Commonly used by gamers and desktop
-     users.
-
-4. **`linuxPackages_hardened`**
-   - A security-focused kernel with additional hardening patches for enhanced
-     protection.
-
-5. **`linuxPackages_rt`**
-   - A real-time kernel designed for low-latency and time-sensitive
-     applications, such as audio production or robotics.
-
-6. **`linuxPackages_libre`**
-   - A kernel stripped of proprietary firmware and drivers, adhering to free
-     software principles.
-
-7. **`linuxPackages_xen_dom0`**
-   - A kernel tailored for running as the host (dom0) in Xen virtualization
-     environments.
-
-8. **`linuxPackages_mptcp`**
-   - A kernel with support for Multipath TCP, useful for advanced networking
-     scenarios.
-
-</details>
-
-<details>
-
-<summary>**  I have older generations I want to delete, how can I do that? **</summary>
-
-- The `ncg` NixOS Clean Generations alias will remove **ALL** but the most
-  current generation. Make sure you have booted from that generation before
-  using this alias. There is also a schedule that will remove older generations
-  automatically over time.
-
-</details>
-
-<details>
-
-<summary>**How do I change the hostname? **</summary>
-
-To change the hostname, there are several steps and you will have to reboot to
-make the change effective.
-
-1. Copy the directory of the host you want to rename to a directory with the new
-   name.
-
-- `cp -rpv ~/dawnbreakos/hosts/OLD-HOSTNAME ~/dawnbreakos/hosts/NEW-HOSTNAME`
-
-2. Edit the `~/dawnbreakos/flake.nix` file. Change the line:
-
-- `host = "NEW-HOSTNAME"`
-
-3. In the `~/dawnbreakos` Directory run `git add .` _The rebuild will fail with a
-   'file not found' error if you forget this step._
-
-4. Use the `ncli rebuild` or fr` alias to create a new generation with the new
-   hostname. You must reboot to make the change effective.
-
-</details>
-<details>
-<summary>** How do I disable the spinning snowflake at startup? **</summary>
-
-1. Edit the `~/dawnbreakos/modules/core/boot.nix` file.
-2. Look for:
-
-```nix
-};
- plymouth.enable = true;
-};
-```
-
-3. Change it to `false`
-4. Run the command `ncli rebuild` or use alias `fr` to create a new generation.
-
-</details>
-
-<details>
- <summary>** How do I configure my hybrid laptop with Intel/NVIDIA GPUs?  **</summary>
-
-1. Either run the `install-dawnbreakos.sh` script and select `nvidia-laptop`
-   template or if configuring manually, set the template in the `flake.nix` to
-   `nvidia-prime`
-
-2. In the `~/dawnbreakos/hosts/HYBRID-HOST/variables.nix` file you will need to set
-   the PCI IDs for the Intel and NVIDIA GPUs. Refer to
-   [this page](https://nixos.wiki/wiki/Nvidia) to help determine those values.
-
-3. Once you have everything configured properly, use the `fr` Flake Rebuild
-   alias to create a new generation.
-
-4. In the `~/dawnbreakos/modules/home/hyprland/config.nix` file is an ENV
-   setting`"AQ_DRM_DEVICES,/dev/dri/card0:/dev/dri/card1:/dev/dri/card2"` This
-   sets the primary and secondary GPUs. Using the info from the weblink above
-   you might have to change the order of these values.
-
-</details>
-
-</div>
-
-</details>
-
-<details>
-
-<details>
- <summary>How do I change the image Stylix uses to theme with?</summary>
-
-1. Edit the `~/dawnbreakos/hosts/HOSTNAME/varibles.nix`
-2. Change the `stylixImage =` to the filename you want to use. Wallpapers are in
-   `~/dawnbreakos/wallpapers`
-
-```nix
-# Set Stylix Image
-stylixImage = ../../wallpapers/AnimeGirlNightSky.jpg;
-```
-
-</details>
-
-</div>
-
-</details>
-
-<details>
-<summary>**🌃 Wallpapers**</summary>
-
-<div style="margin-left: 20px;">
-
-<details>
-<summary>**  How do I add more wallpapers? **</summary>
-
-- Wallpapers are stored in the `~/dawnbreakos/wallpapers` directory.
-- Simply copy the new ones to that diretory.
-- You must do a rebuild after adding new wallpapers.
-- Run `ncli rebuild` command `fr` alias at the CLI.
-
-</details>
-
-<details>
-
-<summary>** How do I change the background? **</summary>
-
-- CTRL + SUPER + T will select a new background
-
-</details>
-
-</div>
-
-</details>
-
-<details>
-<summary>**⬆ How do I update DawnbreakOS?  **</summary>
-
-<div style="margin-left: 20px;">
-
-<details>
-
-1. First backup your existing `dawnbreakos` directory. e.g.
-   `cp -r ~/dawnbreakos ~/dawnbreakos-backup`
-
-2. If you have your own repository (recommended) Make sure all your updates are commited.
-
-| Note: This first step is only needed if you have your own repo
-
-```sh
-git commit -a
-git push
-```
-
-```sh
-git stash
-git pull
-```
-
-3. You should now have the current version of `DawnbreakOS`.
-
-4. If you have added packages. I suggest you add them to the `~/dawnbreakos/hosts/HOSTNAME/host-packages.nix`
-   - Packages installed there will be preserved next time you upgrade
-   - Where `HOSTNAME` is the name of your host
-   - You will need to merge any other changes you've made
-
-5. Rebuild. `ncli rebuild`
-
-6. Assuming not rebuild errors, reboot to make sure it's working
-
-7. Then get the latest packages `ncli update`
-
-8. You might needed to reboot again. Depending on what pkgs were updated
-
-</details>
-
-</div>
-
-</details>
-
-<details><summary>**📂 DawnbreakOS Layout**</summary>
-
-<div style="margin-left: 25px;">
-
-** 📂 ~/dawnbreakos **
-
-```text
-~/dawnbreakos/
-    ├── hosts/                      # Folder where host configs are saved
-    │   ├── default                 # Default host template
-    │   └── dawnbreakos-oem         # Dawnbreak's host
-    ├── modules/                    # Core, HomeMgr, drivers config files
-    │   └── drivers/                # AMD,NVIDA,Intel,VM config files
-    │   └── core/                   # Services, packages, fonts, etc
-    │   └── home/                   # Home Manager config files
-    │    ├── fastfetch/             # Fastfetch config
-    │    ├── hyprland/              # Hyprland configs
-    │    ├── rofi/                  # rofi menu configs
-    │    ├── scripts/               # screenshots, wallpaper, etc.
-    │    ├── waybar/                # waybar configs in NIX format
-    │    ├── wlogout/               # Theme, config for logout menu
-    │    ├── yazi/                  # TUI filemgr config file
-    │    └── zsh/                   # Theme and settings for ZSH
-    ├── profiles/                   # Video hardware templates
-    │    ├── amd/                   # AMD Video config files
-    │    ├── intel/                 # Intel video config files
-    │    ├── nvidia/                # NVIDIA discrete video config files
-    │    ├── nvidia-laptop/         # NVIDIA Hybrid video config files
-    │    └── vm/                    # Virtual Machine config files
-    ├── wallpapers/                 # Add your wallpapers here
-    ├── FAQ.md                      # Frequently Asked Questions
-    ├── flake.lock                  # Saves version info on all installed packages
-    ├── flake.nix                   # flake that controls DawnbreakOS config
-    ├── install-dawnbreakos.sh          # Install script for DawnbreakOS
-    ├── LICENSE                     # MIT license DawnbreakOS is using
-    └── README.md                   # Intro document for DawnbreakOS
-```
-
-</div>
-
-</details>
-
-**---> 🧰 Miscellaneous**
-
-<details>
-
-<summary>**🪧 Rebuild or update fails with Home Manager error can't backup a file**</summary>
-
-<div style="margin-left: 20px;">
-<br>
-
-**Update**
-<br>
-
-- Using the `ncli rebuild` or `ncli update` will search for this file causing
-  rebuild failures
-- If you find other files that cause this you can add them in the
-  `dawnbreakos/modules/home/scripts/default.nix`
-  <br>
-
-```text
-May 08 18:33:57 explorer hm-activate-dwilliams[92420]: Please do one of the following:
-May 08 18:33:57 explorer hm-activate-dwilliams[92420]: - Move or remove the above files and try again.
-May 08 18:33:57 explorer hm-activate-dwilliams[92420]: - In standalone mode, use 'home-manager switch -b backup' to back up
-May 08 18:33:57 explorer hm-activate-dwilliams[92420]:   files automatically.
-May 08 18:33:57 explorer hm-activate-dwilliams[92420]: - When used as a NixOS or nix-darwin module, set
-May 08 18:33:57 explorer hm-activate-dwilliams[92420]:     'home-manager.backupFileExtension'
-May 08 18:33:57 explorer hm-activate-dwilliams[92420]:   to, for example, 'backup' and rebuild.
-May 08 18:33:57 explorer systemd[1]: home-manager-dwilliams.service: Main process exited, code=exited, status=1/FAILURE
-May 08 18:33:57 explorer systemd[1]: home-manager-dwilliams.service: Failed with result 'exit-code'.
-May 08 18:33:57 explorer systemd[1]: Failed to start Home Manager environment for dwilliams.
-```
-
-- There is a script `hm-find` That will search the journal and if found,
-- It will prompt you to delete these backups
-- It creates a log as well
-- Note: The script is not perfect
-- If you get this msg but `hm-find` doesn't report any you will have to search
-  manually e.g `journalctl | grep hm-activate`
-- You can now redo your rebuild
-- Use the `ncli rebuild` or `fr` alias
-- If you ran `fu` for `flake update` you can now do `ncli rebuild` or `fr` for
-  `flake rebuild`
-- The flake has already been updated
-
-</div>
-</details>
-
-<details>
-
-<summary>**📚 What is the difference between Master and Dwindle layouts**</summary>
-
-<div style="margin-left: 20px;">
-<br>
-
-**1. Master Layout**
-
-- The **Master** layout divides the workspace into two main areas:
-  - A **master area** for the primary window, which takes up a larger portion of
-    the screen.
-  - A **stack area** for all other windows, which are tiled in the remaining
-    space.
-- This layout is ideal for workflows where you want to focus on a single main
-  window while keeping others accessible.
-
-**2. Dwindle Layout**
-
-- The **Dwindle** layout is a binary tree-based tiling layout:
-  - Each new window splits the available space dynamically, alternating between
-    horizontal and vertical splits.
-  - The splits are determined by the aspect ratio of the parent container (e.g.,
-    wider splits horizontally, taller splits vertically).
-- This layout is more dynamic and evenly distributes space among all windows.
-
----
-
-**How to Verify the Current Layout**
-
-To check which layout is currently active, use the `hyprctl` command:
-
-`hyprctl getoption general:layout`
-
-</details>
-</div>
-
-</details>
-
-<details>
-<summary>**📦 What are the Yazi keybindings and how can I change them? **</summary>
-
-<div style="margin-left: 20px;"> <br>
-
-The Yazi configuration file is located in `~/dawnbreakos/modules/home/yazi.nix`
-
-Yazi is configured like VIM and VIM motions
-
-The keymap is in the `~/dawnbreakos/modules/home/yazi/keymap.toml` file
-
-</div>
-</details>
-
-<details>
-
-<summary>** What fonts are avialable in NixOS**</summary>
-
-```nix
-{pkgs, ...}: {
-  fonts = {
-    packages = with pkgs; [
-      dejavu_fonts
-      fira-code
-      fira-code-symbols
-      font-awesome
-      hackgen-nf-font
-      ibm-plex
-      inter
-      jetbrains-mono
-      material-icons
-      maple-mono.NF
-      minecraftia
-      nerd-fonts.im-writing
-      nerd-fonts.blex-mono
-      noto-fonts
-      noto-fonts-emoji
-      noto-fonts-cjk-sans
-      noto-fonts-cjk-serif
-      noto-fonts-monochrome-emoji
-      powerline-fonts
-      roboto
-      roboto-mono
-      symbola
-      terminus_font
-      # NERD fonts
-      nerd-fonts.0xproto
-      nerd-fonts._3270
-      nerd-fonts.agave
-      nerd-fonts.anonymice
-      nerd-fonts.arimo
-      nerd-fonts.aurulent-sans-mono
-      nerd-fonts.bigblue-terminal
-      nerd-fonts.bitstream-vera-sans-mono
-      nerd-fonts.blex-mono
-      nerd-fonts.caskaydia-cove
-      nerd-fonts.caskaydia-mono
-      nerd-fonts.code-new-roman
-      nerd-fonts.comic-shanns-mono
-      nerd-fonts.commit-mono
-      nerd-fonts.cousine
-      nerd-fonts.d2coding
-      nerd-fonts.daddy-time-mono
-      nerd-fonts.departure-mono
-      nerd-fonts.dejavu-sans-mono
-      nerd-fonts.droid-sans-mono
-      nerd-fonts.envy-code-r
-      nerd-fonts.fantasque-sans-mono
-      nerd-fonts.fira-code
-      nerd-fonts.fira-mono
-      nerd-fonts.geist-mono
-      nerd-fonts.go-mono
-      nerd-fonts.gohufont
-      nerd-fonts.hack
-      nerd-fonts.hasklug
-      nerd-fonts.heavy-data
-      nerd-fonts.hurmit
-      nerd-fonts.im-writing
-      nerd-fonts.inconsolata
-      nerd-fonts.inconsolata-go
-      nerd-fonts.inconsolata-lgc
-      nerd-fonts.intone-mono
-      nerd-fonts.iosevka
-      nerd-fonts.iosevka-term
-      nerd-fonts.iosevka-term-slab
-      nerd-fonts.jetbrains-mono
-      nerd-fonts.lekton
-      nerd-fonts.liberation
-      nerd-fonts.lilex
-      nerd-fonts.martian-mono
-      nerd-fonts.meslo-lg
-      nerd-fonts.monaspace
-      nerd-fonts.monofur
-      nerd-fonts.monoid
-      nerd-fonts.mononoki
-      nerd-fonts.mplus
-      nerd-fonts.noto
-      nerd-fonts.open-dyslexic
-      nerd-fonts.overpass
-      nerd-fonts.profont
-      nerd-fonts.proggy-clean-tt
-      nerd-fonts.recursive-mono
-      nerd-fonts.roboto-mono
-      nerd-fonts.shure-tech-mono
-      nerd-fonts.sauce-code-pro
-      nerd-fonts.space-mono
-      nerd-fonts.symbols-only
-      nerd-fonts.terminess-ttf
-      nerd-fonts.tinos
-      nerd-fonts.ubuntu
-      nerd-fonts.ubuntu-mono
-      nerd-fonts.ubuntu-sans
-      nerd-fonts.victor-mono
-      nerd-fonts.zed-mono
-
+services = {
+  flatpak = {
+    packages = [
+      "org.mozilla.firefox"
     ];
   };
+};
+```
+
+Use the application ID shown by Flathub or `flatpak search`. Remove an entry from the corresponding list to stop declaring it in this configuration. Run `ncli rebuild` after editing. You can check installed Flatpaks with:
+
+```bash
+flatpak list
+```
+
+The shared Flatpak module has `update.onActivation = true`, so declared Flatpaks are configured to update during system activation.
+
+### How do I enable or disable the bundled applications?
+
+The host's `variables.nix` contains application toggles, including:
+
+```nix
+vscodeEnable = true;
+obsEnable = false;
+```
+
+Change the relevant value to `true` or `false`, then run `ncli rebuild`. These toggles control whether the corresponding Home Manager application configuration is imported; they are not a general-purpose package list.
+
+### How do I enable printing or NFS?
+
+Edit the relevant toggle in `hosts/<HOSTNAME>/variables.nix`:
+
+```nix
+printEnable = false;
+enableNFS = false;
+```
+
+Set `printEnable = true;` to enable the printing, Avahi, and IPP-over-USB services configured by `modules/core/printing.nix`. Set `enableNFS = true;` to enable the NFS server and `rpcbind` services configured by `modules/core/nfs.nix`. Run `ncli rebuild` after changing either value.
+
+## Hyprland and Quickshell
+
+### Where are the Hyprland keybindings?
+
+They are defined in `modules/home/hyprland/binds.nix`.
+
+Inside Hyprland, press **Super + /** to open the Quickshell cheatsheet. The keybinding file also contains descriptions for the Quickshell actions and application shortcuts.
+
+Some useful current bindings include:
+
+| Binding | Action |
+| --- | --- |
+| Super + / | Quickshell keybinding cheatsheet |
+| Super + D | Quickshell search |
+| Super + Tab | Overview |
+| Super + M | Dawnbreak dashboard |
+| Super + Shift + K | Keybindings search tool |
+| Super + Shift + W | Apply wallpaper |
+| Super + Ctrl + T | Wallpaper selector |
+| Super + Ctrl + Alt + T | Select a random wallpaper |
+| Super + Return | Terminal |
+| Super + W | Browser |
+| Super + E | File manager |
+
+To change a binding, edit its `hl.bind(...)` entry in `binds.nix`, save the file, and run `ncli rebuild`. Log out and back in if the changed binding does not become active immediately.
+
+### How do I switch between the Dwindle and Master layouts?
+
+Use the built-in layout shortcuts:
+
+- **Super + Alt + 1:** Dwindle
+- **Super + Alt + 2:** Master
+- **Super + Alt + 3:** Scrolling
+- **Super + Alt + 4:** Monocle
+
+Dwindle splits the available area into a sequence of tiled regions. Master keeps a primary window in a larger area and arranges the remaining windows in a secondary area. Scrolling and Monocle are also available through the shortcuts above.
+
+To check the active layout, run:
+
+```bash
+hyprctl getoption general:layout
+```
+
+The default layout is `dwindle`, set in `modules/home/hyprland/hyprland.nix`. The shortcuts are defined in `modules/home/hyprland/binds.nix`.
+
+### Where are the Quickshell files?
+
+The Quickshell configuration is maintained in `modules/home/ii/`. The Home Manager activation in `modules/home/ii.nix` copies this directory to:
+
+```text
+~/.config/quickshell/ii
+```
+
+Edit the repository files, not only the deployed copy, if you want your changes to persist through a rebuild.
+
+The local Dawnbreak plugin is packaged from `vendor/dawnbreak-plugin` by `modules/core/quickshell.nix`. The QML import paths are configured there as well.
+
+### How do I change the Stylix wallpaper or color source?
+
+1. Add the image you want to use to the repository's `wallpapers/` directory.
+2. Edit `stylixImage` in `hosts/<HOSTNAME>/variables.nix` to point to it. For example:
+
+   ```nix
+   stylixImage = ../../wallpapers/Dazai-kun.png;
+   ```
+
+3. Add the image and changed configuration to Git, then run `ncli rebuild`.
+
+The image is used by `modules/core/stylix.nix` as Stylix's source image for the generated color scheme.
+
+### How do I add more wallpapers and change the desktop background?
+
+1. Copy the new image files into `wallpapers/`.
+2. Add the new files to Git and run `ncli rebuild`. The Hyprland Home Manager module copies the repository wallpapers to `~/Pictures/Wallpapers`.
+3. Open the wallpaper selector with **Super + Ctrl + T** and choose an image. To apply a random wallpaper, press **Super + Ctrl + Alt + T**.
+
+**Super + Shift + W** runs the wallpaper-apply action. The wallpaper selector and actions are implemented by the current Quickshell configuration.
+
+### How do I change the Hyprland animation preset?
+
+Edit `animChoice` in `hosts/<HOSTNAME>/variables.nix`. Choose one of the preset paths shown in the comments in that file, and make sure only the intended assignment is active. The current template uses `animations-dynamic.nix`.
+
+Save the file and run `ncli rebuild` to deploy the selected preset.
+
+## NCLI and maintenance
+
+### What is NCLI and how do I use it?
+
+NCLI is the DawnbreakOS command-line utility. Run:
+
+```bash
+ncli help
+```
+
+The current commands include:
+
+| Command | Purpose |
+| --- | --- |
+| `cleanup` | Remove older system and user generations, with a keep-count prompt |
+| `diag` | Create a hardware and system diagnostic report at `~/diag.txt` |
+| `list-gens` | List system and user generations |
+| `rebuild` | Build and activate the current configuration |
+| `rebuild-boot` | Build the configuration and set it as the boot default for the next restart |
+| `trim` | Run filesystem trimming after confirmation |
+| `update` | Update flake inputs and rebuild |
+| `update-host` | Set or detect the host and profile values in `flake.nix` |
+| `add-host` | Create a host configuration from the default template |
+| `del-host` | Remove a host configuration after confirmation |
+| `fetch` | Display a summary of the current system and repository state |
+
+For command options, examples, and the automatic pre-build cleanup behavior, see [ncli.md](ncli.md).
+
+### How do I rebuild after changing configuration?
+
+Run:
+
+```bash
+ncli rebuild
+```
+
+If you created a new file, add it to Git first. For example:
+
+```bash
+git add path/to/new-file.nix
+```
+
+A successful rebuild creates and activates a new system generation. Depending on what changed, you may need to restart a service, log out, or reboot.
+
+Use `ncli rebuild-boot` when you want to build a new generation and set it as the boot default without activating it in the current session. Reboot to start that generation.
+
+### How do I update the flake inputs and installed packages?
+
+Run:
+
+```bash
+ncli update
+```
+
+This updates the flake inputs and then builds and activates the updated system configuration. Review the changes and make sure your working tree is in the state you want before updating.
+
+### How do I update DawnbreakOS itself from Git?
+
+Updating the repository source and updating the flake inputs are separate operations. To pull changes from the Git remote:
+
+1. Back up the repository or make sure your local changes are committed.
+2. From `~/dawnbreakos`, check the working tree:
+
+   ```bash
+   git status
+   ```
+
+3. Commit or stash local changes before pulling. If you maintain your own fork, push your commits first if you want them preserved remotely.
+4. Pull the intended branch from its remote:
+
+   ```bash
+   git pull --rebase
+   ```
+
+5. Review and resolve any merge or rebase conflicts, then run `ncli rebuild` to build the repository configuration you just pulled.
+6. When you also want newer dependency revisions, run `ncli update`.
+
+Do not use `git stash` or overwrite local files without checking whether they contain changes you want to keep. If you have customized the repository, review upstream changes before applying them.
+
+### How do I list system and user generations?
+
+Run:
+
+```bash
+ncli list-gens
+```
+
+### How do I clean old generations?
+
+Run:
+
+```bash
+ncli cleanup
+```
+
+The command asks how many generations to keep:
+
+- Press Enter to request cleanup that keeps only the current generation.
+- Enter a number to keep that many recent generations.
+
+It asks for confirmation before running the cleanup. Logs are written under `~/ncli-cleanup-logs`; log files older than three days are removed during cleanup. Make sure the currently working system is healthy before removing older rollback options.
+
+### How do I create a diagnostic report?
+
+Run:
+
+```bash
+ncli diag
+```
+
+NCLI runs `inxi --full` and writes the report to:
+
+```text
+~/diag.txt
+```
+
+### What does `ncli fetch` show?
+
+It displays a DawnbreakOS system summary, including the configured host, profile, username, kernel, Hyprland version, hardware details, memory, disk usage, uptime, Git working-tree status, branch, commit, and current system generation.
+
+### How do I trim the filesystem?
+
+Run:
+
+```bash
+ncli trim
+```
+
+NCLI asks for confirmation before running `sudo fstrim -v /`.
+
+### What happens when NCLI runs `hm-find`?
+
+`ncli rebuild`, `ncli rebuild-boot`, and `ncli update` run `hm-find` before the build.
+
+The helper searches the journal for Home Manager backup conflicts from the last 30 minutes. If it finds matching paths, it deletes them automatically; the confirmation prompt in the script is commented out. It writes a log under `~/hm-logs/`.
+
+NCLI also checks its configured backup-file list. The current list includes:
+
+```text
+.config/mimeapps.list.backup
+```
+
+If that file exists, NCLI removes it. Review these behaviors before running a rebuild or update if you need to preserve any matching files.
+
+## Boot and kernel configuration
+
+### How do I disable or enable the startup Plymouth screen?
+
+Edit `modules/core/boot.nix`. The current setting is:
+
+```nix
+plymouth.enable = false;
+```
+
+Set it to `true` to enable Plymouth or `false` to disable it. Save the file and run `ncli rebuild`. The change takes effect on the next boot.
+
+### How do I change the kernel for one host?
+
+The shared default is set in `modules/core/boot.nix`:
+
+```nix
+kernelPackages = pkgs.linuxPackages_latest;
+```
+
+To override it for only one host, create `hosts/<HOSTNAME>/core/kernel.nix`:
+
+```nix
+{ pkgs, lib, ... }:
+{
+  boot.kernelPackages = lib.mkForce pkgs.linuxPackages_zen;
 }
 ```
 
-</details>
+Then add that file to the host's `hosts/<HOSTNAME>/core/default.nix` imports. For example:
 
-**---> 🖥️ Terminals **
+```nix
+{ username, ... }: {
+  imports = [
+    ./services.nix
+    ./kernel.nix
+  ];
+}
+```
 
-<details>
-<summary>**🐱  Kitty**</summary>
+Replace `pkgs.linuxPackages_zen` with the kernel package set you intend to use, if it is available in the Nixpkgs revision pinned by your flake. Common choices include the default `linuxPackages`, `linuxPackages_latest`, `linuxPackages_zen`, and `linuxPackages_hardened`. Then add the new module to Git and run `ncli rebuild`. Reboot to start the new kernel.
 
-<details>
+To change the kernel for every host instead, edit the `kernelPackages` assignment in `modules/core/boot.nix` directly.
 
-<summary>My cursor in Kitty is "janky" and it jumps around. How do I fix that?</summary>
+### What are the common NixOS kernel package sets?
 
-- That feature is called "cursor_trail" in the
-  `~/dawnbreakos/modules/home/kitty.nix` file.
+The kernel package set determines which Linux kernel build NixOS installs. Common choices include:
 
-1. Edit that file and change the `cursor_trail 1` to `cursor_trail 0` or comment
-   out that line.
-2. Use the command `ncli rebuild` or the alias `fr` to create a new generation
-   with the change.
+- `pkgs.linuxPackages`: the default kernel package set selected by the Nixpkgs revision.
+- `pkgs.linuxPackages_latest`: the latest kernel package set provided by that Nixpkgs revision. This is the current DawnbreakOS default.
+- `pkgs.linuxPackages_zen`: a kernel package set with desktop-oriented patches.
+- `pkgs.linuxPackages_hardened`: a security-hardening-oriented kernel package set.
+- `pkgs.linuxPackages_rt`: a real-time kernel package set, where available.
 
-</details>
+The exact versions and available attributes can change with the flake's Nixpkgs input. Check the pinned revision before choosing a less common kernel package set.
 
-<details>
- <summary>What are the Kitty keybindings and how can I change them?</summary>
+## Fonts and terminals
 
-The kitty bindings are configured in `~/dawnbreakos/modules/home/kitty.nix`
+### Which fonts are installed, and where do I add more?
 
-The defaults are:
+The system font package list is in `modules/core/fonts.nix`. It currently includes families and packages such as DejaVu, Fira Code, IBM Plex, Inter, JetBrains Mono, Maple Mono NF, Noto, Roboto, Terminus, and several Nerd Fonts.
+
+To add or remove a font, edit the `fonts.packages` list in that file using the corresponding Nixpkgs package attribute. Save the file and run `ncli rebuild`.
+
+Stylix separately selects the fonts used by themed applications in `modules/core/stylix.nix`: JetBrains Mono for monospace and Montserrat for sans-serif and serif text. Changing the installed font list does not automatically change Stylix's selected font; edit the Stylix font settings as well if that is what you want to change.
+
+### My Kitty cursor trail feels distracting. How do I turn it off?
+
+Kitty's cursor trail is configured in `modules/home/kitty.nix`:
+
+```nix
+cursor_trail = 1;
+```
+
+Change it to `cursor_trail = 0;`, save the file, and run `ncli rebuild`.
+
+### Where are Kitty's keybindings, and how do I change them?
+
+Kitty is configured in `modules/home/kitty.nix`. Its current custom keybindings include:
 
 ```text
-    # Clipboard
-    map ctrl+shift+v        paste_from_selection
-    map shift+insert        paste_from_selection
+# Clipboard
+ctrl+shift+v        paste_from_clipboard
+shift+insert        paste_from_clipboard
 
-    # Scrolling
-    map ctrl+shift+up        scroll_line_up
-    map ctrl+shift+down      scroll_line_down
-    map ctrl+shift+k         scroll_line_up
-    map ctrl+shift+j         scroll_line_down
-    map ctrl+shift+page_up   scroll_page_up
-    map ctrl+shift+page_down scroll_page_down
-    map ctrl+shift+home      scroll_home
-    map ctrl+shift+end       scroll_end
-    map ctrl+shift+h         show_scrollback
+# Scrolling
+ctrl+shift+up        scroll_line_up
+ctrl+shift+down      scroll_line_down
+ctrl+shift+k         scroll_line_up
+ctrl+shift+j         scroll_line_down
+ctrl+shift+page_up   scroll_page_up
+ctrl+shift+page_down scroll_page_down
+ctrl+shift+home      scroll_home
+ctrl+shift+end       scroll_end
+ctrl+shift+h         show_scrollback
 
-    # Window management
-    map alt+n               new_window_with_cwd      #Opens new window in current directory
-    #map alt+n               new_os_window           #Opens new window in $HOME dir
-    map alt+w               close_window
-    map ctrl+shift+enter    launch --location=hsplit
-    map ctrl+shift+s        launch --location=vsplit
-    map ctrl+shift+]        next_window
-    map ctrl+shift+[        previous_window
-    map ctrl+shift+f        move_window_forward
-    map ctrl+shift+b        move_window_backward
-    map ctrl+shift+`        move_window_to_top
-    map ctrl+shift+1        first_window
-    map ctrl+shift+2        second_window
-    map ctrl+shift+3        third_window
-    map ctrl+shift+4        fourth_window
-    map ctrl+shift+5        fifth_window
-    map ctrl+shift+6        sixth_window
-    map ctrl+shift+7        seventh_window
-    map ctrl+shift+8        eighth_window
-    map ctrl+shift+9        ninth_window
-    map ctrl+shift+0        tenth_window
+# Window management
+alt+n               new_window_with_cwd
+alt+w               close_window
+ctrl+shift+enter    launch --location=hsplit
+ctrl+shift+s        launch --location=vsplit
+ctrl+shift+]        next_window
+ctrl+shift+[        previous_window
+ctrl+shift+f        move_window_forward
+ctrl+shift+b        move_window_backward
+ctrl+shift+`        move_window_to_top
 
-    # Tab management
-    map ctrl+shift+right    next_tab
-    map ctrl+shift+left     previous_tab
-    map ctrl+shift+t        new_tab
-    map ctrl+shift+q        close_tab
-    map ctrl+shift+l        next_layout
-    map ctrl+shift+.        move_tab_forward
-    map ctrl+shift+,        move_tab_backward
-
-    # Miscellaneous
-    map ctrl+shift+up      increase_font_size
-    map ctrl+shift+down    decrease_font_size
-    map ctrl+shift+backspace restore_font_size
+# Tabs
+ctrl+shift+right    next_tab
+ctrl+shift+left     previous_tab
+ctrl+shift+t        new_tab
+ctrl+shift+q        close_tab
+ctrl+shift+l        next_layout
+ctrl+shift+.        move_tab_forward
+ctrl+shift+,        move_tab_backward
 ```
 
-</details>
-</details>
+Edit the relevant mapping in the `extraConfig` section of `modules/home/kitty.nix`, then run `ncli rebuild`.
 
-<details>
+## NixOS concepts and learning resources
 
-<summary>**🇼  WezTerm**</summary>
+### What are Nix flakes?
 
-<div style="margin-left: 20px;">
+A flake is a standardized way to describe a Nix project and its inputs and outputs. In DawnbreakOS, `flake.nix` declares dependencies such as Nixpkgs and Home Manager and defines the `nixosConfigurations` outputs. `flake.lock` records the exact revisions of those inputs so builds can be reproduced against the locked versions.
 
-<details>
+DawnbreakOS already enables the required experimental features in `modules/core/system.nix`:
 
-<summary>How do I enable WezTerm?</summary>
-
-Edit the `/dawnbreakos/modules/home/wezterm.nix` Change `enable = false` to
-`enable = true;`\
-Save the file and rebuild dawnbreakos with the `fr` command.
-
-```
-{pkgs, ...}: {
-  programs.wezterm = {
-    enable = false;
-    package = pkgs.wezterm;
-  };
+```nix
+experimental-features = [ "nix-command" "flakes" ];
 ```
 
-</details>
+For more information, see the [NixOS Flakes Wiki](https://wiki.nixos.org/wiki/Flakes) and the [NixOS and Flakes book](https://nixos-and-flakes.thiscute.world/preface).
 
-<details>
- <summary>What are the WezTerm keybindings and how can I change them?</summary>
+### What is Home Manager?
 
-The kitty bindings are configured in `~/dawnbreakos/modules/home/wezterm.nix`
+Home Manager is the Nix project used here to manage user-level applications and configuration files declaratively. DawnbreakOS imports Home Manager through the flake and uses modules under `modules/home/` and each host's `home/` directory.
 
-The defaults are:
+- Shared user configuration belongs under `modules/home/`.
+- Host-specific user configuration belongs under `hosts/<HOSTNAME>/home/`.
+- The Quickshell deployment, for example, is managed by `modules/home/ii.nix`.
+
+After changing a Home Manager module, run `ncli rebuild` so the new user configuration is activated with the system.
+
+### What are NixOS generations and why are builds described as atomic?
+
+A successful NixOS rebuild creates a new system generation and switches the system to it. Existing generations remain available as rollback choices until they are removed by garbage collection or generation cleanup. If a build fails, Nix does not replace the currently active generation with a partially built one.
+
+You can list generations with `ncli list-gens`, clean older generations with `ncli cleanup`, and select an earlier generation from the boot menu when needed. Keep a known-good generation until you have confirmed that the new configuration works.
+
+### I am new to NixOS. Where can I learn more?
+
+- [NixOS Manual](https://nixos.org/manual/nixos/stable/)
+- [NixOS Wiki](https://wiki.nixos.org/)
+- [NixOS and Flakes book](https://nixos-and-flakes.thiscute.world/preface)
+- [Vimjoyer YouTube channel](https://www.youtube.com/@vimjoyer/videos)
+- [LibrePhoenix YouTube channel](https://www.youtube.com/@librephoenix)
+- [NixOS configuration guide video](https://www.youtube.com/watch?v=AGVXJ-TIv3Y&t=34s)
+- [NixOS video series](https://www.youtube.com/watch?v=QKoQ1gKJY5A&list=PL-saUBvIJzOkjAw_vOac75v-x6EzNzZq-)
+
+### Where can I learn Git?
+
+- [Pro Git book](https://git-scm.com/book/en/v2)
+- [Git documentation](https://git-scm.com/doc)
+- [Managing a NixOS configuration with Git](https://www.youtube.com/watch?v=20BN4gqHwaQ)
+- [How Git works](https://www.youtube.com/watch?v=e9lnsKot_SQ)
+
+## Troubleshooting
+
+### NCLI says the hostname does not match
+
+Check that:
+
+- `host` in `flake.nix` matches the output of `hostname`.
+- `hosts/<HOSTNAME>/` exists.
+- The host directory and `flake.nix` changes have been added to Git.
+
+Then retry the NCLI command.
+
+### A rebuild fails because a file would clobber a Home Manager backup
+
+NCLI runs `hm-find` automatically, but that script may delete the conflict paths it detects. Check `~/hm-logs/` for its log output. If the failure remains, inspect the Home Manager activation messages in the journal and resolve the specific file conflict deliberately.
+
+### A newly created host or file is missing from the build
+
+For Git-based flakes, untracked files are not part of the flake source. Add the relevant files:
+
+```bash
+git add flake.nix hosts/<HOSTNAME>
+```
+
+Then run the build again.
+
+## Repository map
 
 ```text
-ALT is the defined META key for WezTerm
-  -- Tab management
-ALT + t                 Open new Tab
-ALT + w                 Close current Tab
-ALT + n                 Move to next Tab
-ALT + p                 Move to previous Tab
-  -- Pane management
-ALT + v                 Create Vertical Split
-ALT + h                 Create Horizontal Split
-ALT + q                 Close Current Pane
-   -- Pane navigation (move between panes with ALT + Arrows)
-ALT + Left Arrow        Move to pane -- Left
-ALT + Right Arrow       Move to pane -- Right
-ALT + Down Arrow        Move to pane -- Down
-ALT + Up Arrow          Move to pane -- Down
+dawnbreakos/
+├── hosts/
+│   ├── default/              # Host template
+│   └── <HOSTNAME>/           # Machine-specific configuration
+├── modules/
+│   ├── core/                 # Shared NixOS modules, packages, services, fonts
+│   └── home/                 # Home Manager modules and desktop configuration
+│       ├── hyprland/         # Hyprland settings, bindings, animations
+│       ├── ii/               # Quickshell source
+│       └── scripts/          # User scripts
+├── profiles/                 # Hardware profile definitions
+├── vendor/
+│   └── dawnbreak-plugin/     # Local Quickshell plugin source
+├── wallpapers/               # Wallpaper images
+├── FAQ.md
+├── flake.nix
+├── install-dawnbreakos.sh
+├── ncli.md
+└── README.md
 ```
 
-</details>
-</div>
-</details>
-
-<details>
-<summary>**👻 Ghostty **</summary>
-
-<div style="margin-left: 20px;">
-
-<details>
-<summary> How do I enable the ghostty terminal? </summary>
-
-1. Edit the `~/dawnbreakos/modules/home/ghostty.nix` file.
-2. Change `enable = true;`
-3. Run the command alias `fr` to create a new generation.
-
-</details>
-
-<details>
-
-<summary> How do I change the ghostty theme?   </summary>
-
-1. Edit the `~/dawnbreakos/modules/home/ghostty.nix` file.
-2. There are several example themes included but commented out.
-
-```text
-#theme = Aura
-theme = Dracula
-#theme = Aardvark Blue
-#theme = GruvboxDarkHard
-```
-
-3. Comment out `Dracula` and either uncomment one of the others or add one of
-   ghostty's many themes.
-
-</details>
-
-<details>
-<summary> What are the default ghostty keybindings?  </summary>
-
-```text
- # keybindings
-    keybind = alt+s>r=reload_config
-    keybind = alt+s>x=close_surface
-
-    keybind = alt+s>n=new_window
-
-    # tabs
-    keybind = alt+s>c=new_tab
-    keybind = alt+s>shift+l=next_tab
-    keybind = alt+s>shift+h=previous_tab
-    keybind = alt+s>comma=move_tab:-1
-    keybind = alt+s>period=move_tab:1
-
-    # quick tab switch
-    keybind = alt+s>1=goto_tab:1
-    keybind = alt+s>2=goto_tab:2
-    keybind = alt+s>3=goto_tab:3
-    keybind = alt+s>4=goto_tab:4
-    keybind = alt+s>5=goto_tab:5
-    keybind = alt+s>6=goto_tab:6
-    keybind = alt+s>7=goto_tab:7
-    keybind = alt+s>8=goto_tab:8
-    keybind = alt+s>9=goto_tab:9
-
-    # split
-    keybind = alt+s>\=new_split:right
-    keybind = alt+s>-=new_split:down
-
-    keybind = alt+s>j=goto_split:bottom
-    keybind = alt+s>k=goto_split:top
-    keybind = alt+s>h=goto_split:left
-    keybind = alt+s>l=goto_split:right
-
-    keybind = alt+s>z=toggle_split_zoom
-
-    keybind = alt+s>e=equalize_splits
-```
-
-</details>
-</div>
-</details>
-
-** --> 🪧 General NixOS related topics **
-
-<details>
-<summary>**❄  What are Flakes in NixOS? **</summary>
-
-<div style="margin-left: 20px;">
-
-**Flakes** are a feature of the Nix package manager that simplifies and
-standardizes how configurations, dependencies, and packages are managed. If
-you're familiar with tools like `package.json` in JavaScript or `Cargo.toml` in
-Rust, flakes serve a similar purpose in the Nix ecosystem.
-
-** Key Features of Flakes: **
-
-1. **Pin Dependencies**:
-   - Flakes lock the versions of dependencies in a `flake.lock` file, ensuring
-     reproducibility across systems.
-
-2. **Standardize Configurations**:
-   - They use a `flake.nix` file to define how to build, run, or deploy a
-     project or system, making setups more predictable.
-
-3. **Improve Usability**:
-   - Flakes simplify sharing and reusing configurations across different systems
-     or projects by providing a consistent structure.
-
-In essence, flakes help manage NixOS setups or Nix-based projects in a more
-portable and reliable way.
-
-</div>
-
-</details>
-
-<details>
-<summary>**🏡  What is NixOS Home Manager? **</summary>
-
-**Home Manager** is a powerful tool in the Nix ecosystem that allows you to
-declaratively manage user-specific configurations and environments. With Home
-Manager, you can streamline the setup of dotfiles, shell settings, applications,
-and system packages for your user profile.
-
-### Key Features of Home Manager:
-
-1. **Declarative Configuration**:
-   - Define all your settings and preferences in a single `home.nix` file,
-     making it easy to track, share, and replicate your setup.
-
-2. **Cross-Distribution Support**:
-   - Home Manager works not only on NixOS but also on other Linux distributions
-     and macOS, allowing you to standardize configurations across devices.
-
-3. **User Environment Management**:
-   - Manage applications, environment variables, shell configurations, and
-     more—all isolated to your user profile.
-
-### Why Use Home Manager?
-
-Home Manager simplifies system management by offering consistency,
-reproducibility, and portability. Whether you’re customizing your development
-environment or sharing configurations between machines, it provides an efficient
-way to tailor your user experience.
-
-</details>
-
-<details>
-<summary>**🏭  What are Atomic Builds?**</summary>
-
-**Atomic builds** in NixOS ensure that any system change (like installing
-software or updating the configuration) is applied in a safe and fail-proof way.
-This means that a system update is either fully successful or has no effect at
-all, eliminating the risk of a partially applied or broken system state.
-
-### How Atomic Builds Work:
-
-1. **Immutable System Generation**:
-   - Every configuration change creates a new "generation" of the system, while
-     the previous ones remain untouched. You can easily roll back to an earlier
-     generation if something goes wrong.
-
-2. **Transaction-Like Behavior**:
-   - Similar to database transactions, changes are applied atomically: either
-     they succeed and become the new active system, or they fail and leave the
-     current system unchanged.
-
-3. **Seamless Rollbacks**:
-   - In case of errors or issues, you can reboot and select a previous system
-     generation from the boot menu to return to a working state.
-
-### Benefits of Atomic Builds:
-
-- **Reliability**: Your system is always in a consistent state, even if a
-  configuration change fails.
-- **Reproducibility**: The same configuration will always produce the same
-  system state, making it easy to debug or replicate.
-- **Ease of Rollback**: Reverting to a working configuration is as simple as
-  rebooting and selecting the previous generation.
-
-### Why NixOS Uses Atomic Builds:
-
-This feature is a cornerstone of NixOS's declarative and reproducible design
-philosophy, ensuring that system management is predictable and stress-free.
-
-</details>
-
-<details>
-<summary>**❓ I am new to NIXOS where can I go to get more info? **</summary>
-
-- [NIXOS Config Guide](https://www.youtube.com/watch?v=AGVXJ-TIv3Y&t=34s)
-- [VIMJOYER YouTube Channel](https://www.youtube.com/@vimjoyer/videos)
-- [Librephoenix YouTube Channel](https://www.youtube.com/@librephoenix)
-- [8 Part Video Series on NIXOS](https://www.youtube.com/watch?v=QKoQ1gKJY5A&list=PL-saUBvIJzOkjAw_vOac75v-x6EzNzZq-)
-- [Great guide for NixOS and Flakes](https://nixos-and-flakes.thiscute.world/preface)
-
-</details>
-
-<details>
-<summary>**🏤 Where can I get info on using GIT repositories  **</summary>
-
-- [Managing NIXOS config with GIT](https://www.youtube.com/watch?v=20BN4gqHwaQ)
-- [GIT for dummies](https://www.youtube.com/watch?v=K6Q31YkorUE)
-- [How GIT works](https://www.youtube.com/watch?v=e9lnsKot_SQ)
-- [In depth 1hr video on GIT](https://www.youtube.com/watch?v=S7XpTAnSDL4&t=123s)
-
-</details>
+This is a focused map of the main configuration areas, not an exhaustive listing of every file.

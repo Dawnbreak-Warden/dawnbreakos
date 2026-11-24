@@ -262,7 +262,7 @@ else
 fi
 
 print_header "Cloning DawnbreakOS Repository"
-git clone https://github.com/Hussein-Playz/dawnbreakos.git -b main --depth=1 ~/dawnbreakos
+git clone https://github.com/Dawnbreak-Warden/dawnbreakos.git -b main --depth=1 ~/dawnbreakos
 cd ~/dawnbreakos || exit 1
 
 print_header "Git Configuration"

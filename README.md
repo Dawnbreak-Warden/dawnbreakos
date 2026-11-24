@@ -1,84 +1,132 @@
-<div align="center">
+# DawnbreakOS
 
-## DawnbreakOS
+DawnbreakOS is a NixOS configuration built around Hyprland, Quickshell, and Home Manager. It brings the system configuration, desktop environment, applications, scripts, and user settings together in one flake-based repository.
 
-DawnbreakOS is a simple way of reproducing my configuration on any NixOS system.
-This includes the wallpaper, scripts, applications, config files, and more.
+The configuration is organized for multiple machines: the host directory contains machine-specific settings, while shared modules and hardware profiles provide the common system configuration.
 
-I originally installed [ZaneyOS](https://gitlab.com/Zaney/zaneyos) for my nix configurations then I spent some time modifying it and replacing alot of things (including the removal of Waybar and replacing it with Quickshell, who's configurations i obtained from [end-4's Quickshell Configurations](https://github.com/end-4/dots-hyprland))
+## What is included
 
-And in the keybinds menu (`SUPER + /` in hyprland) you may see Dawnbreak Launcher, it's my private minecraft launcher so you may remove it (`./modules/home/hyprland/binds.nix` is where keybinds are located) or you can replace it with any launcher you want by modifying the line containing it in binds.nix
+- **NixOS and Home Manager:** declarative system and user configuration.
+- **Hyprland:** the Wayland compositor and its window-management configuration.
+- **Quickshell:** the desktop shell configuration is maintained in this repository under `modules/home/ii/` and deployed to `~/.config/quickshell/ii`.
+- **Dawnbreak Quickshell plugin:** packaged locally from `vendor/dawnbreak-plugin`; it is not fetched as a separate CLI application.
+- **Hardware profiles:** AMD, Intel, NVIDIA, hybrid NVIDIA laptop, AMD/NVIDIA hybrid, and virtual-machine configurations.
+- **Stylix:** system-wide theming, with the image selected per host.
+- **Nixvim:** the Neovim configuration.
+- **Flatpak:** declarative Flatpak application management.
+- **NCLI:** a command-line utility for rebuilds, updates, host management, diagnostics, and maintenance.
 
-And some keybinds may not function due to me removing the original Quickshell, waybar, and noctalia configurations 
+## Requirements and current scope
 
-And to allow drivers to work (FOR HYBRID SUPPORT) you must go into `hosts/your-host/variables.nix` and modify the IDs correctly, to figure out how go to FAQ.md and ctrl + F and search for `In the ~/dawnbreakos/hosts/HYBRID-HOST/variables.nix file you will need to set` to find the steps
+- A working **NixOS** installation.
+- An **x86_64-linux** system. The current `flake.nix` sets `system = "x86_64-linux"`.
+- Nix flakes enabled.
+- A host configuration matching the machine being configured.
+- A supported hardware profile selected in `flake.nix`.
 
-Lastly, I had AI assist me in some parts of this configuration though I lowkey forgot where, however I did read and test the parts I had written via AI
+The current flake exposes these configuration names:
 
-#### 🍖 Requirements
+| Profile | Intended hardware |
+| --- | --- |
+| `amd` | AMD graphics |
+| `intel` | Intel graphics |
+| `nvidia` | NVIDIA graphics |
+| `nvidia-laptop` | Intel/NVIDIA hybrid laptop |
+| `amd-nvidia-hybrid` | AMD/NVIDIA hybrid graphics |
+| `vm` | Virtual machine |
 
-- You must be running on NixOS, version 24.05+.
-- The `dawnbreakos` folder (this repo) is expected to be in your home directory.
-- You must have installed NIXOS using **GPT** parition with booting with
-  **UEFI**.
-- ** 500MB minimum /boot partition required. **
-- Systemd-boot is what is supported.
-- For GRUB you will have to brave the internet for a how-to. ☺️
-- Manually editing your host specific files.
-- The host is the specific computer your installing on.
+The profile names above are the keys in `flake.nix` under `nixosConfigurations`. Use those exact names when selecting a build target.
 
-#### 🎹 Pipewire & Notification Menu Controls
+## Installation
 
-- We are using the latest and greatest audio solution for Linux. Not to mention
-  you will have media and volume controls in the notification center available
-  in the top bar.
+The installer prepares a host configuration and starts the initial NixOS build.
 
-#### 🏇 Optimized Workflow & Simple Yet Elegant Neovim
+### 1. Enter a temporary shell with the required tools
 
-- Using Hyprland for increased elegance, functionality, and efficiency.
-- No massive NeoVIM project here, using `nixvim` for an
-  incredible NeoVIM setup. With language support already added in.
-
-#### 🖥️ Multi Host & User Configuration
-
-- You can define separate settings for different host machines and users.
-- Easily specify extra packages for your users in the `modules/core/user.nix`
-  file.
-- Easy to understand file structure and simple, but encompassing, configuration.
-
-#### 📦 How To Install Packages?
-
-- You can search the [Nix Packages](https://search.nixos.org/packages?) &
-  [Options](https://search.nixos.org/options?) pages for what a package may be
-  named or if it has options available that take care of configuration hurdles
-  you may face.
-- To add a package there are the sections for it in `modules/core/packages.nix`
-  and `modules/core/user.nix`. One is for programs available system wide and the
-  other for your users environment only.
-  
-# Hyprland Keybindings
-
-Inside hyprland you can click SUPER + / (Super is the windows key) to display a list of ALL keybinds
-
-## Installation:
-
-> **⚠️ WARNING:** This script will completely replace any existing ~/dawnbreakos
-> directory. Do NOT use this if you already have DawnbreakOS installed and
-> configured.
-
-Simply copy this and run it:
-
-```
+```bash
 nix-shell -p git curl pciutils
 ```
 
-Then:
+### 2. Run the installer
 
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Dawnbreak-Warden/dawnbreakos/main/install-dawnbreakos.sh)
 ```
-sh <(curl -L https://raw.githubusercontent.com/Hussein-Playz/dawnbreakos/main/install-dawnbreakos.sh)
+
+The installer prompts for the hostname, hardware profile, Git identity, timezone, keyboard layout, and related host settings. Review the configuration summary before confirming the installation.
+
+If `~/dawnbreakos` already exists, the installer asks for explicit confirmation before moving the existing directory into `~/.config/dawnbreakos-backups/`.
+
+### Manual host setup
+
+If you prefer to configure the repository yourself, clone it and create a host from the default template:
+
+```bash
+git clone https://github.com/Dawnbreak-Warden/dawnbreakos.git ~/dawnbreakos
+cd ~/dawnbreakos
+cp -r hosts/default hosts/my-host
+sudo nixos-generate-config --show-hardware-config > hosts/my-host/hardware.nix
 ```
 
-# If you already have your own host but different device
-then **BEFORE REBUILDING** you can manually change the flake.nix's `profile = "nvidia-laptop";` to whatever GPU the new pc has (You can check their names under ./profiles) and then do `sudo nixos-generate-config --show-hardware-config > ~/dawnbreakos/hosts/your_host/hardware.nix` where your_host is your hostname then lastly rebuild using the correct profile so say you chose amd profile then u do `sudo nixos-rebuild switch --flake ~/dawnbreakos#amd`
+Edit `host`, `profile`, and `username` near the top of `flake.nix`. Then configure `hosts/my-host/variables.nix` and `hosts/my-host/host-packages.nix`.
 
-</details>
+Add the new host files to Git before building, because Git-based flakes omit untracked files:
+
+```bash
+git add flake.nix hosts/my-host
+```
+
+For example, build the AMD profile with:
+
+```bash
+sudo nixos-rebuild switch --flake ~/dawnbreakos#amd
+```
+
+Replace `amd` with the profile selected for the machine.
+
+## Configuration guide
+
+### Host-specific settings
+
+Edit `hosts/<HOSTNAME>/variables.nix` for settings such as:
+
+- Browser and terminal preferences.
+- Default MIME application handlers (`mimeDefaultApps`).
+- Keyboard layout, keyboard variant, and console keymap.
+- Intel, AMD, and NVIDIA PCI IDs for hybrid graphics.
+- NFS and printing toggles.
+- The Stylix image (`stylixImage`).
+- The selected Hyprland animation configuration (`animChoice`).
+
+### Packages
+
+- `modules/core/packages.nix` contains shared system packages.
+- `hosts/<HOSTNAME>/host-packages.nix` contains packages for one host.
+- `modules/core/flatpak.nix` contains the shared Flatpak package list.
+- Host-specific Flatpak packages can be configured in the host's `host-packages.nix`.
+
+### Desktop configuration
+
+- `modules/home/hyprland/` contains the Hyprland configuration and keybindings.
+- `modules/home/ii/` contains the Quickshell configuration deployed to `~/.config/quickshell/ii`.
+- `modules/home/kitty.nix` contains the Kitty configuration.
+- `modules/core/quickshell.nix` defines the Quickshell system packages and QML import paths.
+
+Inside Hyprland, **Super + /** opens the Quickshell keybinding cheatsheet.
+
+## NCLI
+
+NCLI is included in the Home Manager scripts. Start with:
+
+```bash
+ncli help
+```
+
+The detailed command reference is in [ncli.md](ncli.md). It covers rebuilds, updates, diagnostics, generation cleanup, host management, and the `fetch` system summary.
+
+**Important:** NCLI's rebuild and update paths currently run `hm-find` automatically. The current `hm-find` script deletes Home Manager backup-conflict files found in the journal's recent 30-minute window without asking for confirmation. NCLI also removes the configured `~/.config/mimeapps.list.backup` file when it exists. Read [ncli.md](ncli.md#automatic-pre-build-cleanup) before using these commands.
+
+## Documentation
+
+- [FAQ](FAQ.md) — host setup, hardware, desktop configuration, packages, and troubleshooting.
+- [NCLI reference](ncli.md) — command descriptions, options, and examples.

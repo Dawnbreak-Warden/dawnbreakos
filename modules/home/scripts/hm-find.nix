@@ -4,8 +4,8 @@ pkgs.writeShellScriptBin "hm-find" ''
 
   # Script Metadata
 
-  # Define the time range (default: last 30 minutes)
-  TIME_RANGE="30m"
+  # Define the time range (default: last 60 minutes)
+  TIME_RANGE="60m"
   LOG_DIR="$HOME/hm-logs"
   LOG_FILE="$LOG_DIR/hm-cleanup-$(date +'%Y-%m-%d_%H-%M-%S').log"
   confirm="y"

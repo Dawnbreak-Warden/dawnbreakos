@@ -15,11 +15,6 @@ in
     # ncli - NixOS System Management CLI
     # ==================================
     #
-    #    Purpose: NixOS system management utility for DawnbreakOS distribution
-    #     Author: Don Williams (ddubs) & Zaney
-    # Start Date: June 7th, 2025
-    #    Version: 1.0.2
-    #
     # Architecture:
     # - Nix-generated shell script using writeShellScriptBin
     # - Configuration via Nix parameters (profile, backupFiles)
@@ -193,7 +188,7 @@ in
           elif $has_nvidia && $has_intel; then
             detected_profile="nvidia-laptop"
           elif $has_nvidia && $has_amd; then
-            detected_profile="amd-hybrid"
+            detected_profile="amd-nvidia-hybrid"
           elif $has_nvidia; then
             detected_profile="nvidia"
           elif $has_amd; then
